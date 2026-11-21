@@ -117,6 +117,7 @@ button.chip.on{background:var(--plum);color:#fff;border-color:var(--plum)}
 </div>
 
 <script src="core.js"></script>
+<script src="views.js"></script>
 <script>
 (function () {
 'use strict';
@@ -244,6 +245,7 @@ function drawUnitMap(v) {
   var m = v && v.sim && v.sim.map; if (!m) return;
   for (var i = 0; i < m.length; i++) { var c = m.charCodeAt(i); if (c === 48) continue; ctx.fillStyle = c === 50 ? '#2b2b2b' : '#f4f4f4'; ctx.fillRect((i % W) * PX, Math.floor(i / W) * PX, PX, PX); }
 }
+function drawBase() { var b = C.BASE; ctx.fillStyle = '#fff'; ctx.strokeStyle = '#45004D'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(b[0] * PX, b[1] * PX, 13, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#45004D'; ctx.font = 'bold 14px Arial'; ctx.fillText('B', b[0] * PX - 5, b[1] * PX + 5); ctx.font = 'bold 11px Arial'; ctx.fillText('Base (recharge)', b[0] * PX - 44, b[1] * PX + 28); }
 function drawPaths(cfg) {
   KINDS.forEach(function (k) {
     var a = cfg[k]; ctx.strokeStyle = ACOL[k]; ctx.fillStyle = ACOL[k]; ctx.lineWidth = k === UI.tab ? 4 : 2.5;
@@ -257,12 +259,12 @@ function drawPaths(cfg) {
 function drawAssets(v) {
   if (!v || !v.sim) return;
   v.sim.assets.forEach(function (st) {
-    var k = st.kind, x = st.x, y = st.y, gone = !st.alive || st.landed;
+    var k = st.kind, x = st.x, y = st.y, gone = !st.alive || st.charging;
     ctx.save(); ctx.globalAlpha = gone ? 0.35 : 1;
     if (k === 'mast') { ctx.fillStyle = ACOL[k]; ctx.fillRect(x * PX - 9, y * PX - 9, 18, 18); }
     else if (k === 'drone') { ctx.beginPath(); ctx.moveTo(x * PX, y * PX - 11); ctx.lineTo(x * PX + 10, y * PX + 8); ctx.lineTo(x * PX - 10, y * PX + 8); ctx.closePath(); ctx.fillStyle = ACOL[k]; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
     else dot(x, y, 9, ACOL[k], '#fff');
-    ctx.fillStyle = '#000'; ctx.font = 'bold 12px Arial'; ctx.fillText(C.ASSETS[k].name + (gone ? ' (out)' : st.gpsLost && v.phase !== 'debrief' ? ' (position?)' : ''), x * PX + 12, y * PX - 8);
+    ctx.fillStyle = '#000'; ctx.font = 'bold 12px Arial'; ctx.fillText(C.ASSETS[k].name + (!st.alive ? ' (out)' : st.charging ? ' (charging)' : st.goingHome ? ' (to base)' : st.gpsLost && v.phase !== 'debrief' ? ' (position?)' : ''), x * PX + 12, y * PX - 8);
     ctx.restore();
   });
 }
@@ -294,90 +296,24 @@ function draw() {
   if (!v) { ctx.drawImage(terrainImage(C.WORLD.brief, 'b'), 0, 0); drawGrid(); return; }
   var mode = UI.mapMode;
   if (mode === 'unit') drawUnitMap(v); else ctx.drawImage(terrainImage(mode === 'truth' ? C.WORLD.truth : C.WORLD.brief, mode === 'truth' ? 't' : 'b'), 0, 0);
-  drawGrid();
+  drawGrid(); drawBase();
   if (v.phase === 'setup') drawPaths(v.cfg);
   if (v.phase === 'gap' || v.phase === 'debrief') drawCorrections(v);
   if (mode === 'truth') drawTruth(v);
   if (v.phase !== 'setup') { drawPicture(v); drawAssets(v); }
 }
 
-/* ================= sensor view ================= */
-var CAPTION = { camera: 'Shape and colour, if there is light. Cannot see heat.', thermal: 'Heat only. Shows that something is warm, not what it is.',
-  lidar: 'Exact shape and distance as points. No colour, no heat.', radar: 'Something is there, and whether it moves. Not what it is.',
-  acoustic: 'A sound and roughly where it came from. No position, no shape.' };
-function vrng(seed) { var a = seed >>> 0; return function () { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; }; }
-function shape(g, look, cx, cy, k, r) {
-  g.beginPath();
-  if (look === 'person') { g.arc(cx, cy - 34 * k, 7 * k, 0, 7); g.rect(cx - 8 * k, cy - 27 * k, 16 * k, 26 * k); g.rect(cx - 7 * k, cy - 2 * k, 5 * k, 20 * k); g.rect(cx + 2 * k, cy - 2 * k, 5 * k, 20 * k); }
-  else if (look === 'vehicle') { g.rect(cx - 44 * k, cy - 14 * k, 88 * k, 22 * k); g.rect(cx - 18 * k, cy - 30 * k, 36 * k, 17 * k); g.moveTo(cx - 20 * k, cy + 10 * k); g.arc(cx - 26 * k, cy + 10 * k, 8 * k, 0, 7); g.moveTo(cx + 34 * k, cy + 10 * k); g.arc(cx + 26 * k, cy + 10 * k, 8 * k, 0, 7); }
-  else if (look === 'heat') { g.arc(cx + 18 * k, cy - 22 * k, 7 * k, 0, 7); }
-  else if (look === 'animal') { g.ellipse(cx, cy, 20 * k, 9 * k, 0, 0, 7); g.moveTo(cx + 26 * k, cy - 6 * k); g.arc(cx + 22 * k, cy - 8 * k, 6 * k, 0, 7); g.rect(cx - 14 * k, cy + 6 * k, 4 * k, 12 * k); g.rect(cx + 10 * k, cy + 6 * k, 4 * k, 12 * k); }
-  else if (look === 'debris') { g.moveTo(cx - 40 * k, cy + 16 * k); g.lineTo(cx - 24 * k, cy - 6 * k); g.lineTo(cx - 6 * k, cy + 2 * k); g.lineTo(cx + 10 * k, cy - 14 * k); g.lineTo(cx + 36 * k, cy + 16 * k); g.closePath(); }
-  else if (look === 'metal') { g.rect(cx - 46 * k, cy - 20 * k, 92 * k, 10 * k); }
-  else { for (var i = 0; i < 5; i++) { var x = cx + (r() - 0.5) * 40 * k, y = cy + (r() - 0.5) * 24 * k; g.moveTo(x + 10 * k, y); g.arc(x, y, (5 + r() * 8) * k, 0, 7); } }
-  g.fill();
-}
-function sensorView(cvs, o) {
-  var g = cvs.getContext('2d'), w = cvs.width, h = cvs.height, r = vrng(o.seed || 7), m = C.WEATHER[o.weather].m[o.sensor], blind = m < 0.3;
-  var q = Math.max(0.08, Math.min(1, (o.conf || 60) / 100)), cx = w * 0.55, cy = h * 0.62, k = h / 170, look = o.look || 'unclear';
-  g.save(); g.clearRect(0, 0, w, h);
-  if (o.sensor === 'camera') {
-    var sky = g.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#9cc3e6'); sky.addColorStop(0.55, '#dfe9f1'); sky.addColorStop(0.56, '#a49a7a'); sky.addColorStop(1, '#7d7458'); g.fillStyle = sky; g.fillRect(0, 0, w, h);
-    if (look === 'heat' || look === 'metal') { g.fillStyle = '#6b5b6e'; g.fillRect(cx - 70 * k, cy - 20 * k, 140 * k, 60 * k); }
-    g.fillStyle = 'rgba(40,40,40,' + (0.25 + 0.75 * q) + ')'; if (look === 'metal') g.fillStyle = 'rgba(255,255,255,' + (0.5 + 0.5 * q) + ')'; shape(g, look, cx, cy, k, r);
-    if (o.weather === 'rain') { g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1; for (var i = 0; i < 160; i++) { var x = r() * w, y = r() * h; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 4, y + 12); g.stroke(); } g.fillStyle = 'rgba(120,130,140,.35)'; g.fillRect(0, 0, w, h); }
-    if (o.weather === 'dust') { g.fillStyle = 'rgba(170,140,95,.86)'; g.fillRect(0, 0, w, h); }
-    if (o.weather === 'night') { g.fillStyle = 'rgba(0,0,8,.9)'; g.fillRect(0, 0, w, h); for (var j = 0; j < 900; j++) { g.fillStyle = 'rgba(255,255,255,' + r() * 0.18 + ')'; g.fillRect(r() * w, r() * h, 1.5, 1.5); } }
-  } else if (o.sensor === 'thermal') {
-    g.fillStyle = o.weather === 'heat' ? '#8a5a6a' : '#140a2a'; g.fillRect(0, 0, w, h);
-    if (o.weather === 'heat') { for (var a = 0; a < 40; a++) { g.fillStyle = 'rgba(255,180,90,' + r() * 0.35 + ')'; g.beginPath(); g.arc(r() * w, r() * h, 8 + r() * 30, 0, 7); g.fill(); } }
-    var cool = look === 'debris' || look === 'metal';
-    var hot = g.createRadialGradient(cx, cy - 10 * k, 2, cx, cy - 10 * k, 60 * k); hot.addColorStop(0, cool ? '#3a3a70' : 'rgba(255,245,160,' + q + ')'); hot.addColorStop(1, cool ? '#26264f' : 'rgba(255,80,0,' + (0.4 + 0.5 * q) + ')');
-    g.fillStyle = hot; g.shadowColor = cool ? 'transparent' : '#ff9a00'; g.shadowBlur = 14 * q; shape(g, look, cx, cy, k, r); g.shadowBlur = 0;
-    if (o.weather === 'rain' || o.weather === 'dust') { g.fillStyle = 'rgba(70,50,90,.55)'; g.fillRect(0, 0, w, h); }
-  } else if (o.sensor === 'lidar') {
-    g.fillStyle = '#05080c'; g.fillRect(0, 0, w, h);
-    var off = document.createElement('canvas'); off.width = w; off.height = h; var og = off.getContext('2d'); og.fillStyle = '#fff'; shape(og, look, cx, cy, k, r); og.fillRect(0, cy + 18 * k, w, 3);
-    var data = og.getImageData(0, 0, w, h).data, step = Math.max(3, Math.round(5 / q));
-    g.fillStyle = '#4fe3ff';
-    if (!blind) for (var yy = 0; yy < h; yy += step) for (var xx = (yy / step % 2) * step / 2; xx < w; xx += step) if (data[(yy * w + (xx | 0)) * 4 + 3] > 0 && r() < 0.35 + 0.6 * m) g.fillRect(xx, yy, 2, 2);
-    var noise = o.weather === 'rain' ? 380 : o.weather === 'dust' ? 900 : 25; for (var n = 0; n < noise; n++) { g.fillStyle = 'rgba(79,227,255,' + (0.3 + r() * 0.5) + ')'; g.fillRect(r() * w, r() * h * 0.9, 2, 2); }
-  } else if (o.sensor === 'radar') {
-    g.fillStyle = '#020d05'; g.fillRect(0, 0, w, h);
-    var R = h * 0.44, ox = h * 0.5, oy = h * 0.5; g.strokeStyle = 'rgba(80,255,120,.35)'; g.lineWidth = 1;
-    [0.33, 0.66, 1].forEach(function (f) { g.beginPath(); g.arc(ox, oy, R * f, 0, 7); g.stroke(); });
-    g.beginPath(); g.moveTo(ox - R, oy); g.lineTo(ox + R, oy); g.moveTo(ox, oy - R); g.lineTo(ox, oy + R); g.stroke();
-    var ang = r() * 6.28, dist = R * (0.35 + r() * 0.5), bx = ox + Math.cos(ang) * dist, by = oy + Math.sin(ang) * dist, size = (look === 'vehicle' || look === 'metal' ? 9 : look === 'unclear' ? 4 : 5) * (0.6 + q);
-    if (o.moving) for (var t = 1; t < 5; t++) { g.fillStyle = 'rgba(80,255,120,' + (0.35 - t * 0.07) + ')'; g.beginPath(); g.arc(bx - t * 6, by + t * 3, size * 0.8, 0, 7); g.fill(); }
-    g.fillStyle = 'rgba(120,255,150,' + (0.5 + 0.5 * q) + ')'; g.shadowColor = '#5f5'; g.shadowBlur = 10; g.beginPath(); g.arc(bx, by, size, 0, 7); g.fill(); g.shadowBlur = 0;
-    for (var c2 = 0; c2 < 14; c2++) { g.fillStyle = 'rgba(80,255,120,' + r() * 0.4 + ')'; var aa = r() * 6.28, dd = r() * R; g.fillRect(ox + Math.cos(aa) * dd, oy + Math.sin(aa) * dd, 2, 2); }
-    g.strokeStyle = 'rgba(120,255,150,.8)'; g.lineWidth = 2; g.beginPath(); g.moveTo(ox, oy); g.lineTo(ox + Math.cos(ang + 0.3) * R, oy + Math.sin(ang + 0.3) * R); g.stroke();
-    g.fillStyle = 'rgba(120,255,150,.9)'; g.font = (12 * k) + 'px Arial'; g.fillText('echo at ~' + Math.round(dist / R * 120) + ' m', h + 10, oy);
-  } else {
-    g.fillStyle = '#10101a'; g.fillRect(0, 0, w, h);
-    var mid = h * 0.5, noiseA = o.weather === 'rain' ? 0.9 : o.weather === 'night' ? 0.15 : 0.3, sig = blind ? 0.05 : q;
-    g.strokeStyle = '#ffd34d'; g.lineWidth = 1.5; g.beginPath();
-    for (var x3 = 0; x3 < w * 0.68; x3++) { var burst = (look === 'vehicle' ? Math.sin(x3 * 0.9) : (Math.floor(x3 / 14) % 3 === 0 ? Math.sin(x3 * 0.5) : 0)) * sig * h * 0.32; var yv = mid + burst + (r() - 0.5) * noiseA * h * 0.4; if (x3) g.lineTo(x3, yv); else g.moveTo(x3, yv); }
-    g.stroke();
-    var px = w * 0.84, py = mid, rr = h * 0.3, br = r() * 6.28; g.strokeStyle = '#666'; g.beginPath(); g.arc(px, py, rr, 0, 7); g.stroke();
-    g.fillStyle = 'rgba(255,211,77,.45)'; g.beginPath(); g.moveTo(px, py); g.arc(px, py, rr, br - 0.45, br + 0.45); g.closePath(); g.fill();
-    g.fillStyle = '#ccc'; g.font = (11 * k) + 'px Arial'; g.fillText('direction', px - rr * 0.6, py + rr + 14 * k);
-  }
-  if (blind) { g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, h - 30 * k, w, 30 * k); g.fillStyle = '#fff'; g.font = 'bold ' + (13 * k) + 'px Arial'; g.fillText('Blinded by ' + C.WEATHER[o.weather].label.toLowerCase(), 8, h - 10 * k); }
-  g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, 0, w, 22 * k); g.fillStyle = '#fff'; g.font = 'bold ' + (12 * k) + 'px Arial';
-  g.fillText(C.SENSORS[o.sensor].name + ' · ' + C.WEATHER[o.weather].label + (o.conf != null ? ' · ' + o.conf + '%' : ''), 8, 15 * k);
-  g.restore();
-}
-var PREVIEW_T = [['person', 'Person'], ['vehicle', 'Vehicle'], ['heat', 'Hot roof vent (false)'], ['animal', 'Animal (false)'], ['debris', 'Debris pile (false)'], ['metal', 'Metal roof (false)']];
-function previewConf(sensor, look, w) { var real = look === 'person' || look === 'vehicle', b = real ? C.DET[sensor][look] : C.CLUT[look][sensor]; return Math.round(100 * Math.min(0.95, (real ? 0.3 : 0.2) + 0.6 * b * C.WEATHER[w].m[sensor])); }
-function drawPreviews() { ['pv1', 'pv2'].forEach(function (id) { var c = $(id); if (!c) return; var s = c.getAttribute('data-sensor'); sensorView(c, { sensor: s, weather: UI.pvWx, look: UI.pvLook, conf: previewConf(s, UI.pvLook, UI.pvWx), seed: 11, moving: UI.pvLook === 'vehicle' || UI.pvLook === 'animal' }); }); }
+/* ================= sensor view (shared views.js) ================= */
+var V = window.SimViews, CAPTION = V.CAPTION, PREVIEW_T = V.PREVIEW_T;
+function sensorView(cvs, o) { V.sensorView(cvs, o); }
+function drawPreviews() { var v = view(); if (!v) return; ['pv1', 'pv2'].forEach(function (id) { var c = $(id); if (!c) return; var s = c.getAttribute('data-sensor'), plat = c.getAttribute('data-platform'); sensorView(c, { sensor: s, weather: UI.pvWx, look: UI.pvLook, conf: V.previewConf(s, UI.pvLook, UI.pvWx), seed: 11, moving: UI.pvLook === 'vehicle' || UI.pvLook === 'animal', platform: plat, alt: v.cfg.drone.alt }); }); }
 var lastView = '';
 function drawReportView(r, wx) {
   var c = $('sv'); if (!c) return;
   var key = r ? r.id + '|' + r.status : 'none'; if (key === lastView) return; lastView = key;
   if (!r) { var g = c.getContext('2d'); g.fillStyle = '#1a1a1a'; g.fillRect(0, 0, c.width, c.height); g.fillStyle = '#aaa'; g.font = '16px Arial'; g.fillText('No report selected', 20, c.height / 2); $('svCap').textContent = ''; return; }
-  sensorView(c, { sensor: r.sensor, weather: r.wx || wx, look: r.look, conf: r.conf, seed: r.id * 977, moving: r.moving });
-  $('svCap').textContent = 'Report ' + r.id + ' from the ' + C.ASSETS[r.asset].name.toLowerCase() + '. ' + CAPTION[r.sensor];
+  sensorView(c, { sensor: r.sensor, weather: r.wx || wx, look: r.look, conf: r.conf, seed: r.id * 977, moving: r.moving, platform: r.asset, alt: r.alt });
+  $('svCap').textContent = 'Report ' + r.id + ' from the ' + C.ASSETS[r.asset].name.toLowerCase() + '. ' + V.caption(r.sensor, r.asset, r.alt);
 }
 
 /* ================= setup panels ================= */
@@ -389,7 +325,7 @@ function vendorTable(keys) {
 }
 function assetPanel(cfg, k) {
   var a = cfg[k], ed = canEdit(k), dis = (!ed || locked()) ? ' disabled' : '', dr = ed ? '' : ' disabled', pay = C.payloadOf(a), z = cfg.command.zones[k];
-  var h = '<div class="card"><h3>' + C.ASSETS[k].name + ' <span class="pill">zone ' + C.ZONES[z].name + '</span>' + (ed ? '' : ' <span class="note">(view only)</span>') + '</h3>';
+  var h = '<div class="card"><h3>' + C.ASSETS[k].name + ' <span class="pill">suggested area ' + C.ZONES[z].name + '</span>' + (ed ? '' : ' <span class="note">(view only)</span>') + '</h3>';
   h += '<label class="row">Preset <select data-part="' + k + '" data-f="preset"' + dr + '>' + opt(Object.keys(C.PRESETS[k]).map(function (p) { return [p, p + ': ' + C.PRESETS[k][p].label]; }).concat(locked() ? [] : [['custom', 'Custom']]), a.preset || 'custom') + '</select></label>';
   h += '<label class="row">Primary sensor <select data-part="' + k + '" data-f="primary"' + dis + '>' + sensorOpts(a.primary) + '</select></label>';
   h += '<label class="row">Fallback sensor <select data-part="' + k + '" data-f="fallback"' + dis + '>' + sensorOpts(a.fallback, true) + '</select></label>';
@@ -402,16 +338,17 @@ function assetPanel(cfg, k) {
     h += '<label class="row">If position is lost <select data-part="' + k + '" data-f="lostRule"' + dis + '>' + opt([['carry', 'Carry on and guess'], ['stop', 'Stop where it is'], ['return', 'Go back to start']], a.lostRule || 'carry') + '</select></label>';
     var L = k === 'ground' ? Math.max(0, C.groundRoute(C.WORLD.brief, a.path || []).cells.length - 1) : C.pathLength(a.path || [], true), lap = L / C.ASSETS[k].speeds[a.speed];
     h += '<div>Patrol path: <b>' + (a.path || []).length + '</b> points · ' + Math.round(L * C.CELL_M) + ' m · lap ' + Math.round(lap) + ' s</div>';
-    if (k === 'drone') { var en = C.droneEndurance(a), len = view().spec.length; h += '<div>Endurance ' + en + ' s for a ' + len + ' s mission</div><div class="bar' + (en < len ? ' red' : '') + '"><i style="width:' + Math.min(100, en / len * 100) + '%"></i></div>' + (en < len ? '<div class="warn">The drone will land before the end.</div>' : ''); }
+    var en = k === 'drone' ? C.droneEndurance(a) : C.groundEndurance(a), len = view().spec.length;
+    h += '<div>Battery: <b>' + en + ' s</b> of ' + (k === 'drone' ? 'flight' : 'driving') + ', then back to base and ' + C.RECHARGE + ' s to recharge.</div><div class="bar' + (en < len ? ' red' : '') + '"><i style="width:' + Math.min(100, en / len * 100) + '%"></i></div>' + (en < len ? '<div class="note">It will recharge during the ' + len + ' s mission. Heavier sensors, speed' + (k === 'drone' ? ' and flying high' : '') + ' drain it faster. Far routes cost more travel to base.</div>' : '');
     if (k === 'ground' && C.groundRoute(C.WORLD.brief, a.path || []).blocked) h += '<div class="warn">No road connects these points on the briefing map.</div>';
     if (ed) h += '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button data-do="undo" data-part="' + k + '">Remove last point</button><button data-do="clear" data-part="' + k + '">Clear path</button></div><div class="note">Pick a route, or draw your own: click the map to add a point, drag a point to move it, click a point to remove it.</div>';
   } else {
     h += '<label class="row"><b>Position</b> <select data-part="mast" data-f="route"' + dr + '>' + opt(C.ROUTES.mast.concat([['custom', 'Custom (clicked on the map)']]), a.route || 'custom') + '</select></label>';
-    h += '<div>Position: <b>' + (a.pos ? C.square(a.pos[0], a.pos[1]) : 'not placed') + '</b></div>' + (ed ? '<div class="note">Or click on the map inside its zone. Not on buildings or water.</div>' : '');
+    h += '<div>Position: <b>' + (a.pos ? C.square(a.pos[0], a.pos[1]) : 'not placed') + '</b></div>' + (ed ? '<div class="note">Or click anywhere on the map. Not on buildings or water.</div>' : '');
   }
   h += '</div><div class="card"><h3>What your sensors actually see</h3><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"><select id="pvLook">' + opt(PREVIEW_T, UI.pvLook) + '</select><select id="pvWx">' + opt(Object.keys(C.WEATHER).map(function (x) { return [x, C.WEATHER[x].label]; }), UI.pvWx) + '</select></div>' +
-    (a.primary ? '<canvas id="pv1" data-sensor="' + a.primary + '" width="400" height="170" style="width:100%;border-radius:6px"></canvas><div class="note">Primary: ' + esc(CAPTION[a.primary]) + '</div>' : '') +
-    (a.fallback ? '<canvas id="pv2" data-sensor="' + a.fallback + '" width="400" height="170" style="width:100%;border-radius:6px;margin-top:6px"></canvas><div class="note">Fallback: ' + esc(CAPTION[a.fallback]) + '</div>' : '') + '</div>';
+    (a.primary ? '<canvas id="pv1" data-platform="' + k + '" data-sensor="' + a.primary + '" width="400" height="170" style="width:100%;border-radius:6px"></canvas><div class="note">Primary: ' + esc(V.caption(a.primary, k, a.alt)) + '</div>' : '') +
+    (a.fallback ? '<canvas id="pv2" data-platform="' + k + '" data-sensor="' + a.fallback + '" width="400" height="170" style="width:100%;border-radius:6px;margin-top:6px"></canvas><div class="note">Fallback: ' + esc(V.caption(a.fallback, k, a.alt)) + '</div>' : '') + '</div>';
   return h + '<div class="card"><h3>Vendor cards</h3>' + vendorTable([a.primary, a.fallback]) + '</div>';
 }
 var CHECKS = '<ol class="checks"><li><b>What did it see?</b> Does the description fit a real target?</li><li><b>Does another sensor agree?</b> Two different sensors near the same place is much stronger.</li><li><b>Does it make sense there?</b> A vehicle in the marsh or a hot spot on a roof is suspicious.</li><li><b>Can this sensor be trusted right now?</b> Camera at night, thermal at midday, acoustic in rain: weak.</li></ol>';
@@ -425,11 +362,12 @@ function operatorPanel(cfg) {
     '<div class="card"><h3>Before you send a report to command: four checks</h3>' + CHECKS + '</div>';
 }
 function commandPanel(cfg) {
-  var c = cfg.command, ed = canEdit('command') && !locked(), dis = ed ? '' : ' disabled', used = {}; KINDS.forEach(function (k) { used[c.zones[k]] = 1; });
+  var c = cfg.command, ed = canEdit('command') && !locked(), dis = ed ? '' : ' disabled', used = C.zonesCovered(cfg);
   var dark = C.ZONES.filter(function (z) { return !used[z.id]; }).map(function (z) { return z.name; });
   var h = '<div class="card"><h3>Command element</h3><div class="note">During the mission the operators send you their judgement on each report. You decide: confirm, dismiss, or send an asset to re-check.</div>';
-  KINDS.forEach(function (k) { h += '<label class="row">' + C.ASSETS[k].name + ' patrols <select data-part="command" data-f="zone.' + k + '"' + dis + '>' + opt(C.ZONES.map(function (z) { return [z.id, 'zone ' + z.name]; }), c.zones[k]) + '</select></label>'; });
-  h += '<div class="' + (dark.length ? 'warn' : '') + '">' + (dark.length ? 'Unwatched: ' + dark.join(', ') : 'Every zone has an asset') + '</div>';
+  h += '<div class="note">Assets can go anywhere. Their limits are battery, sensor range and flight height. The area below only sets each asset\'s suggested route.</div>';
+  KINDS.forEach(function (k) { h += '<label class="row">' + C.ASSETS[k].name + ' starts in <select data-part="command" data-f="zone.' + k + '"' + dis + '>' + opt(C.ZONES.map(function (z) { return [z.id, 'zone ' + z.name]; }), c.zones[k]) + '</select></label>'; });
+  h += '<div class="' + (dark.length ? 'warn' : '') + '">' + (dark.length ? 'Nobody\'s route reaches: ' + dark.join(', ') : 'Every zone is reached by at least one route') + '</div>';
   h += '<label class="row">Report only above <select data-part="command" data-f="threshold"' + dis + '>' + opt([[30, '30% confidence'], [50, '50% confidence'], [70, '70% confidence']], c.threshold) + '</select></label>';
   h += '<label class="row">Reporting interval <select data-part="command" data-f="interval"' + dis + '>' + opt([[0, 'Immediately'], [10, 'Every 10 s (bundled)'], [20, 'Every 20 s (bundled)']], c.interval) + '</select></label>';
   h += '<label class="row">Comms budget per asset <select data-part="command" data-f="budget"' + dis + '>' + opt([[4, '4 reports a minute'], [8, '8 reports a minute'], [12, '12 reports a minute']], c.budget) + '</select></label>';
@@ -501,7 +439,7 @@ function updateMission(v) {
     else top.forEach(function (r) { var el = document.querySelector('[data-card="' + r.id + '"]'); if (!el) return; var lim = ME.role === 'commander' ? (v.cfg.command.decideWithin || 40) : v.cfg.operator.expiry, left = Math.max(0, (ME.role === 'commander' ? r.cmdExp : r.exp) - S.t), frac = left / lim, bar = el.querySelector('.bar'); el.querySelector('.left').textContent = Math.ceil(left) + ' s left'; bar.classList.toggle('red', frac < 0.3); bar.firstChild.style.width = (frac * 100) + '%'; });
     $('qMore').textContent = q.length > 4 ? '+ ' + (q.length - 4) + ' more waiting' : '';
   }
-  if ($('assetStatus')) { var st = S.assets.filter(function (a) { return a.kind === ME.role; })[0], a = v.cfg[ME.role]; $('assetStatus').innerHTML = '<div>' + (st.alive ? st.landed ? '<span class="warn">Landed (battery empty)</span>' : 'Working' : '<span class="warn">Platform lost</span>') + (st.gpsLost ? ' · <span class="warn">positioning lost</span>' : '') + '</div><div class="note">Sensors: ' + esc(C.SENSORS[a.primary].name) + (a.fallback ? ' then ' + esc(C.SENSORS[a.fallback].name) : '') + '. The sensor view shows your latest report.</div>'; }
+  if ($('assetStatus')) { var st = S.assets.filter(function (a) { return a.kind === ME.role; })[0], a = v.cfg[ME.role]; $('assetStatus').innerHTML = '<div>' + (st.alive ? st.charging ? 'Recharging at base' : st.goingHome ? '<span class="warn">Battery low, returning to base</span>' : 'Working' : '<span class="warn">Platform lost</span>') + (st.cap ? ' · battery ' + Math.max(0, Math.round(st.battery / st.cap * 100)) + '%' : '') + (st.gpsLost ? ' · <span class="warn">positioning lost</span>' : '') + '</div><div class="note">Sensors: ' + esc(C.SENSORS[a.primary].name) + (a.fallback ? ' then ' + esc(C.SENSORS[a.fallback].name) : '') + '. The sensor view shows your latest report.</div>'; }
   var sel = UI.hover != null ? S.reports.filter(function (r) { return r.id === UI.hover; })[0] : null;
   drawReportView(sel || q[0] || null, S.weather);
   if (S.events.length + S.t * 0 !== lastLog) { $('log').innerHTML = S.events.slice().reverse().map(function (e) { return '<div' + (e.kind === 'warn' ? ' class="warn"' : '') + '>' + mmss(e.t) + ' ' + esc(e.text) + '</div>'; }).join(''); lastLog = S.events.length; }
@@ -652,9 +590,8 @@ function inZone(cfg, k, x, y) { return C.zoneOf(x, y) === cfg.command.zones[k]; 
 function placePoint(cfg, k, x, y, quiet) {
   var zname = C.ZONES[cfg.command.zones[k]].name; function no(t) { if (!quiet) msg(t, true); return null; }
   if (!C.inb(x, y)) return null;
-  if (!inZone(cfg, k, x, y)) return no(C.ASSETS[k].name + ' is allocated to zone ' + zname + '. Click inside that zone.');
   if (k === 'mast') { var v = C.WORLD.brief[C.idx(x, y)]; if (v === T.BUILD || v === T.WATER) return no('The mast cannot stand on a building or water.'); return [x, y]; }
-  if (k === 'ground') { var best = null, bd = 1e9; for (var yy = 0; yy < H; yy++) for (var xx = 0; xx < W; xx++) if (C.WORLD.brief[C.idx(xx, yy)] === T.ROAD && inZone(cfg, k, xx, yy)) { var d = Math.hypot(xx - x, yy - y); if (d < bd) { bd = d; best = [xx, yy]; } } if (!best || bd > 8) return no('The ground robot can only drive on roads. Click nearer a road in zone ' + zname + '.'); return best; }
+  if (k === 'ground') { var best = null, bd = 1e9; for (var yy = 0; yy < H; yy++) for (var xx = 0; xx < W; xx++) if (C.WORLD.brief[C.idx(xx, yy)] === T.ROAD) { var d = Math.hypot(xx - x, yy - y); if (d < bd) { bd = d; best = [xx, yy]; } } if (!best || bd > 8) return no('The ground robot can only drive on roads. Click nearer a road.'); return best; }
   return [x, y];
 }
 var drag = null;
@@ -677,7 +614,7 @@ cv.addEventListener('pointerup', function (e) {
 
 function dialog(html) { var o = document.createElement('div'); o.className = 'overlay'; o.innerHTML = '<div class="dialog">' + html + '<div style="text-align:right;margin-top:12px"><button class="primary" data-close>Close</button></div></div>'; o.addEventListener('click', function (e) { if (e.target === o || e.target.hasAttribute('data-close')) o.remove(); }); document.body.appendChild(o); }
 function showHelp() {
-  dialog('<h2>How it works</h2><p>Each group is one hybrid patrol unit: a drone, a ground robot and a sensor mast (the machines), operators and a commander (the people). Every group plays the same world with the same events at the same times. The facilitator moves all groups through the phases together.</p>' +
+  dialog('<h2>How it works</h2><p>Assets can go anywhere on the map. Their limits are battery time (they fly or drive back to base to recharge), sensor range and flight height.</p><p>Each group is one hybrid patrol unit: a drone, a ground robot and a sensor mast (the machines), operators and a commander (the people). Every group plays the same world with the same events at the same times. The facilitator moves all groups through the phases together.</p>' +
     '<ol><li><b>Setup.</b> Asset leads choose sensors, motion and patrol route. Operators set up their stations. The commander allocates zones, sets the reporting rules and marks the unit ready.</li>' +
     '<li><b>Mission.</b> Reports arrive at the operators. They judge each one REAL or FALSE and send it to the commander, who confirms, dismisses or orders a re-check. Disruptions appear only in the mission log.</li>' +
     '<li><b>Gap.</b> Operators write one report for the commander, the commander writes one direction per asset, asset leads correct the briefing map.</li>' +

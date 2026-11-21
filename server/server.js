@@ -89,7 +89,7 @@ function groupView(cl, g, role, full) {
     reps = S.reports.filter(r => r.status === 'open' || r.status === 'assessed' || r.status === 'confirmed' || recent.indexOf(r.id) >= 0);
   } else reps = S.reports;
   v.sim = { t: S.t, length: S.spec.length, done: S.done, weather: S.weather, commsDown: S.commsDown, events: S.events.slice(-40),
-            assets: KINDS.map(k => { const st = S.assets[k]; return { kind: k, x: st.x + (truth ? 0 : st.off[0]), y: st.y + (truth ? 0 : st.off[1]), alive: st.alive, landed: st.landed, gpsLost: st.gpsLost }; }),
+            assets: KINDS.map(k => { const st = S.assets[k]; return { kind: k, x: st.x + (truth ? 0 : st.off[0]), y: st.y + (truth ? 0 : st.off[1]), alive: st.alive, gpsLost: st.gpsLost, charging: !!st.charging, goingHome: !!st.goingHome, battery: st.battery ? Math.round(st.battery) : 0, cap: st.cap || 0 }; }),
             reports: reps.map(r => pubReport(r, truth)), map: mapString(S), nReports: S.reports.length };
   if (truth) { v.score = C.score(S); delete v.score.foundIds; v.found = C.score(S).foundIds; v.truth = truthList(S); }
   return v;
@@ -154,6 +154,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && (u.pathname === '/' || u.pathname === '/index.html')) return staticFile(res, path.join(PUB, 'play.html'));
     if (req.method === 'GET' && u.pathname === '/core.js') return staticFile(res, path.join(__dirname, 'core.js'));
+    if (req.method === 'GET' && u.pathname === '/views.js') return staticFile(res, path.join(PUB, 'views.js'));
     if (req.method === 'GET' && u.pathname === '/health') return send(res, 200, { ok: true, classes: Object.keys(classes).length });
     if (req.method === 'POST' && u.pathname === '/api/class') { const cl = newClass(); return send(res, 200, { code: cl.code, token: cl.token }); }
     if (u.pathname.indexOf('/api/') !== 0) { res.writeHead(404); res.end('Not found'); return; }

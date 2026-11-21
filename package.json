@@ -1,0 +1,14 @@
+{
+  "name": "raa-patrol-sim",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser-based teaching simulation of a hybrid human-robot patrol unit",
+  "scripts": {
+    "start": "node server/server.js",
+    "build": "node tools/build_single.js",
+    "test": "node test/class_flow.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

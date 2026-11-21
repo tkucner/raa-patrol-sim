@@ -92,10 +92,12 @@ function describe(c, s, moving, r) {
 var SPEEDQ = { slow: 1.15, normal: 1.0, fast: 0.75 };
 var REVISIT = { carry: 0, once: 8, three: 24, orbit: 45 };
 var PAYLOAD = 6;
+var BASE = [29.5, 19.5], BASE_CELL = [29, 19], RECHARGE = 45;
 
 function rating(m) { return m >= 0.8 ? 'good' : m >= 0.3 ? 'weak' : 'blind'; }
 function payloadOf(a) { var c = 0; if (a.primary) c += SENSORS[a.primary].cost; if (a.fallback) c += SENSORS[a.fallback].cost; return c; }
-function droneEndurance(a) { return 520 - 25 * payloadOf(a) - (a.speed === 'fast' ? 90 : a.speed === 'slow' ? -40 : 0) - (a.alt === 'high' ? 20 : 0); }
+function droneEndurance(a) { return 330 - 25 * payloadOf(a) - (a.speed === 'fast' ? 60 : a.speed === 'slow' ? -30 : 0) - (a.alt === 'high' ? 20 : 0); }
+function groundEndurance(a) { return 600 - 30 * payloadOf(a) - (a.speed === 'fast' ? 120 : a.speed === 'slow' ? -60 : 0); }
 
 function contactPos(c, t) {
   if (!c.speed || c.path.length < 2) return { x: c.path[0][0] + 0.5, y: c.path[0][1] + 0.5, moving: false };
@@ -226,8 +228,8 @@ function applyPreset(cfg, kind, key) {
   var a = { preset: key, primary: p.primary, fallback: p.fallback, lostRule: old.lostRule || 'carry' };
   if (kind !== 'mast') { a.speed = p.speed; a.onDet = p.onDet; }
   if (kind === 'drone') a.alt = p.alt;
-  if (kind === 'mast') { var keepPos = old.pos && zoneOf(old.pos[0], old.pos[1]) === z; a.pos = keepPos ? old.pos : routeTemplate('mast', z, 'centre')[0]; a.route = keepPos ? (old.route || 'centre') : 'centre'; }
-  else { var keep = old.path && old.path.length >= 2 && old.path.every(function (q) { return zoneOf(q[0], q[1]) === z; }); a.path = keep ? old.path : routeTemplate(kind, z, kind === 'drone' ? 'loop' : 'long'); a.route = keep ? (old.route || 'custom') : (kind === 'drone' ? 'loop' : 'long'); }
+  if (kind === 'mast') { var keepPos = !!old.pos; a.pos = keepPos ? old.pos : routeTemplate('mast', z, 'centre')[0]; a.route = keepPos ? (old.route || 'centre') : 'centre'; }
+  else { var keep = old.path && old.path.length >= 2; a.path = keep ? old.path : routeTemplate(kind, z, kind === 'drone' ? 'loop' : 'long'); a.route = keep ? (old.route || 'custom') : (kind === 'drone' ? 'loop' : 'long'); }
   cfg[kind] = a;
 }
 
@@ -240,6 +242,17 @@ function roundSpec(r, ov) {
   return { round: r, seed: ov.seed != null && ov.seed !== '' ? +ov.seed : b.seed, weather: ov.weather || b.weather, length: +(ov.length || 360), injects: b.injects.slice() };
 }
 
+function zonesCovered(cfg) {
+  var z = {};
+  function mark(x, y, r) { for (var dy = -r; dy <= r; dy += 2) for (var dx = -r; dx <= r; dx += 2) { var xx = x + dx, yy = y + dy; if (inb(xx | 0, yy | 0) && dx * dx + dy * dy <= r * r) z[zoneOf(xx | 0, yy | 0)] = 1; } }
+  ['drone', 'ground'].forEach(function (k) {
+    var a = cfg[k], p = a.path || []; if (!p.length) return; var r = (SENSORS[a.primary] ? SENSORS[a.primary].range : 6) * (k === 'drone' && a.alt === 'high' ? 1.3 : 1) * 0.6;
+    var pts = k === 'ground' ? groundRoute(WORLD.brief, p).cells : p.concat([p[0]]);
+    for (var i = 0; i < pts.length; i++) { var q = pts[i], nx = pts[i + 1] || q, n = Math.max(1, Math.ceil(Math.hypot(nx[0] - q[0], nx[1] - q[1]) / 2)); for (var j = 0; j < n; j++) mark(q[0] + (nx[0] - q[0]) * j / n, q[1] + (nx[1] - q[1]) * j / n, r); }
+  });
+  if (cfg.mast.pos && SENSORS[cfg.mast.primary]) mark(cfg.mast.pos[0], cfg.mast.pos[1], SENSORS[cfg.mast.primary].range * 1.15 * 0.6);
+  return z;
+}
 function validate(cfg) {
   var errs = [];
   ['drone', 'ground', 'mast'].forEach(function (k) {
@@ -267,9 +280,9 @@ function createSim(cfg, spec) {
     st.driftAng = st.rng() * Math.PI * 2;
     S.obsBy[k] = new Uint8Array(W * H);
     if (k === 'mast') { st.x = a.pos[0] + 0.5; st.y = a.pos[1] + 0.5; st.launch = [st.x, st.y]; st.onRidge = WORLD.truth[idx(a.pos[0], a.pos[1])] === T.RIDGE; }
-    else if (k === 'drone') { st.route = a.path.map(function (p) { return [p[0] + 0.5, p[1] + 0.5]; }); st.x = st.route[0][0]; st.y = st.route[0][1]; st.launch = [st.x, st.y]; st.wp = 1 % st.route.length; st.endurance = droneEndurance(a); }
+    else if (k === 'drone') { st.route = a.path.map(function (p) { return [p[0] + 0.5, p[1] + 0.5]; }); st.x = BASE[0]; st.y = BASE[1]; st.launch = BASE.slice(); st.wp = 0; st.battery = st.cap = droneEndurance(a); }
     else { var r = groundRoute(WORLD.truth, a.path); st.route = r.cells.map(function (p) { return [p[0] + 0.5, p[1] + 0.5]; }); st.loop = r.loop; st.blocked = r.blocked; st.blockedAt = r.blockedAt; st.dir = 1;
-      if (!st.route.length) st.route = [[a.path[0][0] + 0.5, a.path[0][1] + 0.5]]; st.x = st.route[0][0]; st.y = st.route[0][1]; st.launch = [st.x, st.y]; st.wp = st.route.length > 1 ? 1 : 0; }
+      if (!st.route.length) st.route = [[a.path[0][0] + 0.5, a.path[0][1] + 0.5]]; st.x = st.route[0][0]; st.y = st.route[0][1]; st.launch = [st.x, st.y]; st.wp = st.route.length > 1 ? 1 : 0; st.battery = st.cap = groundEndurance(a); }
     S.assets[k] = st;
   });
   ev(S, 'Mission start. Weather: ' + WEATHER[S.weather].label + '.');
@@ -287,19 +300,42 @@ function activeSensor(S, st) {
 }
 function moveToward(st, tx, ty, dist) { var dx = tx - st.x, dy = ty - st.y, d = Math.hypot(dx, dy); if (d <= dist) { st.x = tx; st.y = ty; return true; } st.x += dx / d * dist; st.y += dy / d * dist; return false; }
 
+function roadPath(from, to) {
+  var a = [clamp(Math.floor(from[0]), 0, W - 1), clamp(Math.floor(from[1]), 0, H - 1)], b = [Math.floor(to[0]), Math.floor(to[1])];
+  var p = bfsRoad(WORLD.truth, a, b); return p ? p.map(function (c) { return [c[0] + 0.5, c[1] + 0.5]; }) : null;
+}
 function stepAsset(S, st, dt) {
-  if (!st.alive || st.landed || st.kind === 'mast') return;
-  var a = S.cfg[st.kind];
-  if (st.kind === 'drone' && S.t >= st.endurance) { st.landed = true; ev(S, 'Drone: battery empty, drone has landed.', 'warn'); return; }
-  var v = ASSETS[st.kind].speeds[a.speed] * dt, moved = false;
+  if (!st.alive || st.kind === 'mast') return;
+  var a = S.cfg[st.kind], v = ASSETS[st.kind].speeds[a.speed] * dt, moved = false;
+  /* battery: recharging at base */
+  if (st.charging) { if (S.t >= st.charging) { st.charging = 0; st.battery = st.cap; st.landed = false; ev(S, st.name + ': recharged, back on patrol.'); } return; }
+  /* battery: going home */
+  if (st.goingHome) {
+    var home = st.kind === 'drone' ? BASE : null, arrived;
+    if (st.kind === 'drone') arrived = moveToward(st, BASE[0], BASE[1], v);
+    else { if (!st.homePath || !st.homePath.length) arrived = true; else { var hp = st.homePath[0]; if (moveToward(st, hp[0], hp[1], v)) st.homePath.shift(); arrived = !st.homePath.length; } }
+    st.battery -= dt;
+    if (arrived) { st.goingHome = false; st.charging = S.t + RECHARGE; st.landed = true; st.revisit = null; if (st.kind === 'ground') st.backPath = roadPath([st.x, st.y], st.route[st.wp] || st.route[0]); ev(S, st.name + ': at base, recharging for ' + RECHARGE + ' s.'); }
+    void home; return;
+  }
   if (st.halted) return;
+  /* battery check: time needed to get home plus a margin */
+  var distHome = st.kind === 'drone' ? Math.hypot(st.x - BASE[0], st.y - BASE[1]) : Math.abs(st.x - BASE[0]) + Math.abs(st.y - BASE[1]);
+  var speedNow = ASSETS[st.kind].speeds[a.speed];
+  if (st.battery <= distHome / speedNow + 6) {
+    st.goingHome = true; st.revisit = null;
+    if (st.kind === 'ground') { st.homePath = roadPath([st.x, st.y], BASE_CELL); if (!st.homePath) { st.goingHome = false; st.alive = false; ev(S, 'Ground robot: battery empty and no road home. Robot is out.', 'warn'); return; } }
+    ev(S, st.name + ': battery low, returning to base to recharge.', 'warn'); return;
+  }
   if (st.revisit) {
     var R = st.revisit;
     if (st.kind === 'drone' && !R.arrived) { R.arrived = moveToward(st, R.x, R.y, v); moved = true; }
     else { if (R.until == null) R.until = S.t + (R.ordered ? 15 : REVISIT[a.onDet]); if (S.t >= R.until) { st.revisit = null; st.cooldown = S.t + 10; } }
   } else if (st.returning) {
     if (moveToward(st, st.launch[0], st.launch[1], v)) { st.halted = true; ev(S, st.name + ': back at its start point, holding.'); } moved = true;
-  } else if (st.route.length > 1) {
+  } else if (st.backPath && st.backPath.length) {
+    var bp = st.backPath[0]; if (moveToward(st, bp[0], bp[1], v)) st.backPath.shift(); moved = true;
+  } else if (st.route.length > 1 || (st.kind === 'drone' && st.route.length)) {
     var tgt = st.route[st.wp];
     if (moveToward(st, tgt[0], tgt[1], v)) {
       if (st.kind === 'drone' || st.loop) st.wp = (st.wp + 1) % st.route.length;
@@ -308,6 +344,7 @@ function stepAsset(S, st, dt) {
     }
     moved = true;
   }
+  st.battery -= st.kind === 'drone' ? dt : (moved ? dt : dt * 0.3);
   if (moved && st.gpsLost) { st.off[0] += (Math.cos(st.driftAng) * 0.09 + gauss(st.rng) * 0.04) * dt; st.off[1] += (Math.sin(st.driftAng) * 0.09 + gauss(st.rng) * 0.04) * dt; }
 }
 
@@ -358,7 +395,7 @@ function detect(S, st, sensor, d) {
   var a = S.cfg[st.kind];
   if (cmd.revisit && a.onDet && a.onDet !== 'carry' && !st.revisit && S.t >= st.cooldown && st.kind !== 'mast' && !st.halted)
     st.revisit = { x: clamp(d.x, 0, W - 1), y: clamp(d.y, 0, H - 1), arrived: st.kind !== 'drone' };
-  S.outbox.push({ asset: st.kind, sensor: sensor, tDet: S.t, x: d.x, y: d.y, conf: d.conf, src: d.src, real: d.real, tx: d.tx, ty: d.ty, desc: d.desc, look: d.look, moving: d.moving, wx: S.weather });
+  S.outbox.push({ asset: st.kind, sensor: sensor, tDet: S.t, x: d.x, y: d.y, conf: d.conf, src: d.src, real: d.real, tx: d.tx, ty: d.ty, desc: d.desc, look: d.look, moving: d.moving, wx: S.weather, alt: st.kind === 'drone' ? S.cfg.drone.alt : null });
   if (!cmd.interval) flushOutbox(S);
 }
 function flushOutbox(S) {
@@ -454,7 +491,7 @@ function runHeadless(cfg, spec, policy) {
 }
 function logHash(S) { return hashStr(JSON.stringify(S.reports.map(function (r) { return [r.id, r.asset, r.sensor, r.tArr, r.conf, r.src, r.status, Math.round(r.x * 100)]; })) + JSON.stringify(S.events)); }
 
-root.SimCore = { DET: DET, CLUT: CLUT, W: W, H: H, CELL_M: CELL_M, T: T, WORLD: WORLD, ZONES: ZONES, CONTACTS: CONTACTS, SENSORS: SENSORS, WEATHER: WEATHER, ASSETS: ASSETS, PRESETS: PRESETS,
+root.SimCore = { DET: DET, CLUT: CLUT, BASE: BASE, RECHARGE: RECHARGE, groundEndurance: groundEndurance, zonesCovered: zonesCovered, W: W, H: H, CELL_M: CELL_M, T: T, WORLD: WORLD, ZONES: ZONES, CONTACTS: CONTACTS, SENSORS: SENSORS, WEATHER: WEATHER, ASSETS: ASSETS, PRESETS: PRESETS,
   REVISIT: REVISIT, PAYLOAD: PAYLOAD, idx: idx, inb: inb, zoneOf: zoneOf, square: square, rating: rating, payloadOf: payloadOf, droneEndurance: droneEndurance,
   contactPos: contactPos, ROUTES: ROUTES, routeTemplate: routeTemplate, groundRoute: groundRoute, bfsRoad: bfsRoad, pathLength: pathLength, defaultPath: defaultPath, defaultConfig: defaultConfig,
   applyPreset: applyPreset, roundSpec: roundSpec, validate: validate, createSim: createSim, step: step, decide: decide, assess: assess, cqueue: cqueue, retask: retask, queue: queue, score: score,

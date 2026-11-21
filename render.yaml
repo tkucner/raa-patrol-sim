@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: raa-patrol-sim
+    runtime: node
+    plan: free
+    branch: classroom-server
+    buildCommand: echo "no build step"
+    startCommand: node server/server.js
+    healthCheckPath: /health
+    autoDeploy: true
