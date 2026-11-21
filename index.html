@@ -1,0 +1,1116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patrol Unit Simulator</title>
+<style>
+:root{--plum:#45004D;--mag:#B1059D;--peach:#FFDBC4;--amber:#D99216;--pink:#D881CE;--light:#F6ECF5;--ink:#1A1A1A;--muted:#666;--ok:#1B6E20;--bad:#B3261E;--line:#ddd;--bg:#fff}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:15px/1.4 Arial,Helvetica,sans-serif}
+body.big{font-size:19px}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:8px 14px;background:var(--plum);color:#fff}
+header h1{font-size:1.15em;margin:0 12px 0 0;white-space:nowrap}
+header input{width:9em;padding:4px 6px;border-radius:4px;border:0;font:inherit}
+.phases{display:flex;gap:4px;flex-wrap:wrap}
+.phase{padding:5px 10px;border-radius:14px;background:rgba(255,255,255,.12);color:#fff;font-size:.9em}
+.phase.on{background:var(--mag);font-weight:bold}
+.spacer{flex:1}
+button{font:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--plum);background:#fff;color:var(--plum);padding:6px 12px}
+button.primary{background:var(--mag);border-color:var(--mag);color:#fff;font-weight:bold}
+button.ghost{background:transparent;border-color:rgba(255,255,255,.6);color:#fff}
+button:disabled{opacity:.45;cursor:not-allowed}
+button{min-height:38px}
+.seg{display:inline-flex;border:1px solid var(--plum);border-radius:6px;overflow:hidden}
+.seg button{border:0;border-radius:0;min-width:52px}
+.seg button.on{background:var(--plum);color:#fff}
+.mbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.ctrl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ctrl .big{padding:10px 18px;font-size:1.05em}
+.ev{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.chip{font-size:.82em;padding:1px 7px;border-radius:9px;background:#eee}
+.chip.good{background:#DDEFD9}.chip.bad{background:#F6D5D2}.chip.mid{background:#FFE8D6}
+.saw{font-style:italic}
+.checks{margin:4px 0 0 18px;padding:0}.checks li{margin:2px 0}
+main{display:flex;gap:12px;padding:12px;align-items:flex-start}
+#mapWrap{flex:1 1 auto;min-width:0}
+#map{width:100%;height:auto;border:1px solid var(--line);border-radius:6px;display:block;touch-action:none}
+#side{flex:0 0 440px;max-width:440px}
+body.big #side{flex-basis:520px;max-width:520px}
+.card{background:var(--light);border-radius:8px;padding:10px 12px;margin-bottom:10px}
+.card h3{margin:0 0 6px;color:var(--plum);font-size:1.05em}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+.tab{padding:5px 10px;border-radius:6px;border:1px solid var(--plum);background:#fff;color:var(--plum)}
+.tab.on{background:var(--plum);color:#fff}
+label.row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:5px 0}
+select,textarea,input[type=number]{font:inherit;padding:4px 6px;border:1px solid #bbb;border-radius:4px;background:#fff}
+textarea{width:100%;min-height:90px}
+.bar{height:10px;background:#e6e6e6;border-radius:5px;overflow:hidden;margin:3px 0 6px}
+.bar>i{display:block;height:100%;background:var(--mag)}
+.bar.red>i{background:var(--bad)}
+.warn{color:var(--bad);font-weight:bold}
+.note{color:var(--muted);font-size:.9em}
+.msg{position:fixed;left:50%;top:70px;transform:translateX(-50%);background:var(--plum);color:#fff;padding:10px 16px;border-radius:8px;z-index:50;box-shadow:0 4px 18px rgba(0,0,0,.25);max-width:90vw}
+.msg.err{background:var(--bad)}
+table{border-collapse:collapse;width:100%}
+th,td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;font-size:.92em}
+th{background:var(--plum);color:#fff}
+.rep{background:#fff;border-radius:8px;padding:8px 10px;margin-bottom:8px;border:2px solid transparent}
+.rep.low{background:#FFF3EA}
+.rep:hover{border-color:var(--mag)}
+.rep .top{display:flex;justify-content:space-between;font-weight:bold;color:var(--plum)}
+.rep .btns{display:flex;gap:8px;margin-top:6px}
+.rep .btns button{flex:1;padding:10px;min-height:52px;font-size:1.1em;font-weight:bold;touch-action:manipulation}
+.confirm{background:var(--ok)!important;border-color:var(--ok)!important;color:#fff!important}
+.reject{background:#fff!important;border-color:#777!important;color:#333!important}
+#log{max-height:180px;overflow:auto;font-size:.9em;background:#fff;border-radius:6px;padding:6px}
+#log div{border-bottom:1px dotted #ddd;padding:2px 0}
+.clock{font-size:1.6em;font-weight:bold;color:var(--plum)}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.kpi{background:#fff;border-radius:6px;padding:6px;text-align:center}
+.kpi b{display:block;font-size:1.4em;color:var(--mag)}
+.legend span{display:inline-flex;align-items:center;gap:4px;margin:0 10px 4px 0;font-size:.88em}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid #999}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:40}
+.dialog{background:#fff;border-radius:10px;padding:18px 22px;max-width:760px;width:92vw;max-height:88vh;overflow:auto}
+.dialog h2{margin-top:0;color:var(--plum)}
+.score td:last-child,.score th:last-child{text-align:right}
+.total td{font-weight:bold;font-size:1.1em;border-top:2px solid var(--plum)}
+.pill{display:inline-block;padding:1px 8px;border-radius:10px;background:var(--peach);font-size:.85em}
+#printArea{display:none}
+@media print{body>*:not(#printArea){display:none!important}#printArea{display:block!important}#printArea table{font-size:11pt}}
+@media (max-width:1100px){main{flex-direction:column}#side{max-width:none;flex-basis:auto;width:100%}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Patrol Unit Simulator</h1>
+  <span>Group <input id="groupName" aria-label="Group name"></span>
+  <span id="roundLabel"></span>
+  <div class="phases" id="phases"></div>
+  <div class="spacer"></div>
+  <button class="ghost" id="btnBig" title="Larger text for the projector">Large text</button>
+  <button class="ghost" id="btnHelp">How it works</button>
+  <button class="ghost" id="btnBoard">Leaderboard</button>
+  <button class="ghost" id="btnFac">Facilitator</button>
+</header>
+<main>
+  <div id="mapWrap">
+    <canvas id="map" width="960" height="640" aria-label="Map"></canvas>
+    <div id="mapBar" style="margin-top:6px"></div>
+  </div>
+  <div id="side"></div>
+</main>
+<div id="printArea"></div>
+
+<script id="core">
+/* ================= SIMULATION CORE (no DOM) ================= */
+(function (root) {
+'use strict';
+var W = 60, H = 40, CELL_M = 10;
+var T = { OPEN: 0, BUILD: 1, TREES: 2, RIDGE: 3, ROAD: 4, MARSH: 5, WATER: 6 };
+function idx(x, y) { return y * W + x; }
+function inb(x, y) { return x >= 0 && y >= 0 && x < W && y < H; }
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function hashStr(s) { var h = 2166136261; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+function rngFor(seed, name) { return mulberry32(((seed >>> 0) ^ hashStr(name)) >>> 0); }
+function gauss(r) { var u = 0; while (u === 0) u = r(); var v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+function zoneOf(x, y) { return (x < 30 ? 0 : 1) + (y < 20 ? 0 : 2); }
+var ZONES = [{ id: 0, name: 'Z1', x0: 0, y0: 0, x1: 29, y1: 19 }, { id: 1, name: 'Z2', x0: 30, y0: 0, x1: 59, y1: 19 },
+             { id: 2, name: 'Z3', x0: 0, y0: 20, x1: 29, y1: 39 }, { id: 3, name: 'Z4', x0: 30, y0: 20, x1: 59, y1: 39 }];
+function square(x, y) { return 'ABCDEF'.charAt(clamp(Math.floor(x / 10), 0, 5)) + (clamp(Math.floor(y / 10), 0, 3) + 1); }
+
+function buildWorld() {
+  var truth = new Uint8Array(W * H), brief = new Uint8Array(W * H);
+  function fill(g, x0, y0, w, h, v) { for (var y = y0; y < y0 + h; y++) for (var x = x0; x < x0 + w; x++) if (inb(x, y)) g[idx(x, y)] = v; }
+  [truth, brief].forEach(function (g) {
+    fill(g, 18, 0, 4, 17, T.TREES);
+    fill(g, 34, 22, 26, 3, T.RIDGE);
+    fill(g, 44, 29, 15, 10, T.MARSH);
+    fill(g, 0, 18, 60, 2, T.ROAD);
+    fill(g, 29, 0, 2, 40, T.ROAD);
+    [36, 42, 48].forEach(function (bx) { [4, 10].forEach(function (by) { fill(g, bx, by, bx === 48 ? 5 : 4, by === 4 ? 3 : 4, T.BUILD); }); });
+    fill(g, 4, 34, 4, 3, T.BUILD);
+  });
+  fill(brief, 36, 14, 4, 3, T.BUILD);   // demolished in reality
+  fill(truth, 10, 28, 4, 3, T.BUILD);   // unmapped structure
+  fill(truth, 29, 30, 2, 4, T.WATER);   // flooded road
+  var errors = [
+    { type: 'demolished', label: 'Block shown on the map is demolished', x: 36, y: 14, w: 4, h: 3 },
+    { type: 'unmapped', label: 'Structure missing from the map', x: 10, y: 28, w: 4, h: 3 },
+    { type: 'flooded', label: 'Road shown as open is flooded', x: 29, y: 30, w: 2, h: 4 }];
+  return { truth: truth, brief: brief, errors: errors };
+}
+var WORLD = buildWorld();
+
+var CONTACTS = [
+  { id: 'R1', real: true, kind: 'vehicle', label: 'Parked vehicle, engine on and off', path: [[44, 8]], speed: 0, engine: 'cycle' },
+  { id: 'R2', real: true, kind: 'person', label: 'Two people walking by the tree line', path: [[16, 2], [16, 15]], speed: 0.25 },
+  { id: 'R3', real: true, kind: 'vehicle', label: 'Vehicle driving on the road', path: [[3, 18], [27, 18]], speed: 0.5, engine: 'on' },
+  { id: 'R4', real: true, kind: 'person', label: 'Person hidden behind the ridge', path: [[45, 26]], speed: 0 },
+  { id: 'R5', real: true, kind: 'person', label: 'Person in the demolished block', path: [[37, 15]], speed: 0 },
+  { id: 'R6', real: true, kind: 'vehicle', label: 'Vehicle by the unmapped structure', path: [[15, 31]], speed: 0, engine: 'off' },
+  { id: 'F1', real: false, kind: 'heat', label: 'Hot roof vent (false)', path: [[50, 5]], speed: 0 },
+  { id: 'F2', real: false, kind: 'animal', label: 'Animal in the marsh (false)', path: [[46, 31], [56, 36]], speed: 0.2 },
+  { id: 'F3', real: false, kind: 'debris', label: 'Debris pile (false)', path: [[6, 8]], speed: 0 },
+  { id: 'F4', real: false, kind: 'metal', label: 'Metal shed roof (false)', path: [[24, 27]], speed: 0 }];
+
+var SENSORS = {
+  camera:   { name: 'Daylight camera', cost: 2, range: 10, posErr: 1.0, spur: 0.010, map: true,  los: true,  vendor: 4.2 },
+  thermal:  { name: 'Thermal imager',  cost: 3, range: 8,  posErr: 1.0, spur: 0.012, map: true,  los: true,  vendor: 4.0 },
+  lidar:    { name: 'Lidar',           cost: 5, range: 7,  posErr: 0.5, spur: 0.006, map: true,  los: true,  vendor: 4.4 },
+  radar:    { name: 'Radar',           cost: 4, range: 12, posErr: 3.0, spur: 0.015, map: true,  los: true,  vendor: 3.6 },
+  acoustic: { name: 'Acoustic',        cost: 1, range: 10, posErr: 4.0, spur: 0.020, map: false, los: false, vendor: 3.1 } };
+var DET = { camera: { person: 0.55, vehicle: 0.65 }, thermal: { person: 0.65, vehicle: 0.6 }, lidar: { person: 0.5, vehicle: 0.7 },
+            radar: { person: 0.2, vehicle: 0.55 }, acoustic: { person: 0.2, vehicle: 0.5 } };
+var CLUT = { heat:   { camera: 0.03, thermal: 0.6,  lidar: 0.03, radar: 0.03, acoustic: 0.02 },
+             animal: { camera: 0.25, thermal: 0.5,  lidar: 0.2,  radar: 0.3,  acoustic: 0.5 },
+             debris: { camera: 0.2,  thermal: 0.05, lidar: 0.35, radar: 0.4,  acoustic: 0.02 },
+             metal:  { camera: 0.3,  thermal: 0.1,  lidar: 0.2,  radar: 0.6,  acoustic: 0.02 } };
+var WEATHER = {
+  clear: { label: 'Clear day', m: { camera: 1, thermal: 1, lidar: 1, radar: 1, acoustic: 1 } },
+  night: { label: 'Night', m: { camera: 0.08, thermal: 1.1, lidar: 1, radar: 1, acoustic: 1.1 } },
+  rain:  { label: 'Heavy rain', m: { camera: 0.6, thermal: 0.55, lidar: 0.35, radar: 0.9, acoustic: 0.25 } },
+  dust:  { label: 'Dust or smoke', m: { camera: 0.12, thermal: 0.6, lidar: 0.12, radar: 1, acoustic: 1 } },
+  heat:  { label: 'Midday heat', m: { camera: 1, thermal: 0.12, lidar: 1, radar: 1, acoustic: 0.9 } } };
+var ASSETS = {
+  drone:  { name: 'Drone', speeds: { slow: 1.0, normal: 1.6, fast: 2.4 } },
+  ground: { name: 'Ground robot', speeds: { slow: 0.5, normal: 0.8, fast: 1.2 } },
+  mast:   { name: 'Sensor mast', speeds: null } };
+var DESC = {
+  person:  { camera: 'person-sized shape', thermal: 'warm, person-sized', lidar: 'upright shape, about 1.8 m', radar: 'small echo', acoustic: 'footsteps or voices' },
+  vehicle: { camera: 'vehicle-shaped object', thermal: 'warm, vehicle-sized', lidar: 'box shape, about 4 m', radar: 'large echo', acoustic: 'engine noise' },
+  heat:    { camera: 'unclear shape on a roof', thermal: 'hot spot, not moving', lidar: 'small object on a roof', radar: 'weak echo', acoustic: 'humming' },
+  animal:  { camera: 'small moving shape', thermal: 'warm, small, moving', lidar: 'low moving shape', radar: 'small slow echo', acoustic: 'rustling' },
+  debris:  { camera: 'irregular heap', thermal: 'cool object', lidar: 'low irregular object', radar: 'echo, not moving', acoustic: 'unclear sound' },
+  metal:   { camera: 'bright reflection', thermal: 'cool flat surface', lidar: 'flat surface', radar: 'strong echo, not moving', acoustic: 'unclear sound' } };
+var VAGUE = ['unclear signal', 'brief contact, then gone', 'faint shape'];
+function describe(c, s, moving, r) {
+  var roll = r();
+  if (c.real && roll < 0.2) return ['unclear shape', 'unclear'];
+  var kind = (!c.real && roll < 0.2) ? 'person' : c.kind;
+  var d = DESC[kind][s];
+  if (s === 'radar') d = (moving ? 'moving ' : 'still ') + d;
+  return [d, kind];
+}
+var SPEEDQ = { slow: 1.15, normal: 1.0, fast: 0.75 };
+var REVISIT = { carry: 0, once: 8, three: 24, orbit: 45 };
+var PAYLOAD = 6;
+
+function rating(m) { return m >= 0.8 ? 'good' : m >= 0.3 ? 'weak' : 'blind'; }
+function payloadOf(a) { var c = 0; if (a.primary) c += SENSORS[a.primary].cost; if (a.fallback) c += SENSORS[a.fallback].cost; return c; }
+function droneEndurance(a) { return 520 - 25 * payloadOf(a) - (a.speed === 'fast' ? 90 : a.speed === 'slow' ? -40 : 0) - (a.alt === 'high' ? 20 : 0); }
+
+function contactPos(c, t) {
+  if (!c.speed || c.path.length < 2) return { x: c.path[0][0] + 0.5, y: c.path[0][1] + 0.5, moving: false };
+  var segs = [], L = 0;
+  for (var i = 0; i < c.path.length - 1; i++) { var dx = c.path[i + 1][0] - c.path[i][0], dy = c.path[i + 1][1] - c.path[i][1], l = Math.hypot(dx, dy); segs.push(l); L += l; }
+  var d = (t * c.speed) % (2 * L); if (d > L) d = 2 * L - d;
+  for (var j = 0; j < segs.length; j++) { if (d <= segs[j] || j === segs.length - 1) { var f = segs[j] ? d / segs[j] : 0; return { x: c.path[j][0] + (c.path[j + 1][0] - c.path[j][0]) * f + 0.5, y: c.path[j][1] + (c.path[j + 1][1] - c.path[j][1]) * f + 0.5, moving: true }; } d -= segs[j]; }
+  return { x: c.path[0][0] + 0.5, y: c.path[0][1] + 0.5, moving: true };
+}
+function engineOn(c, t) { return c.engine === 'on' || (c.engine === 'cycle' && Math.floor(t / 60) % 2 === 0); }
+
+/* line of sight on the true map; returns factor 0..1 */
+function losFactor(x0, y0, x1, y1, obs) {
+  var cx0 = Math.floor(x0), cy0 = Math.floor(y0), cx1 = Math.floor(x1), cy1 = Math.floor(y1);
+  var dx = Math.abs(cx1 - cx0), sx = cx0 < cx1 ? 1 : -1, dy = -Math.abs(cy1 - cy0), sy = cy0 < cy1 ? 1 : -1, err = dx + dy, x = cx0, y = cy0, f = 1;
+  while (!(x === cx1 && y === cy1)) {
+    var e2 = 2 * err; if (e2 >= dy) { err += dy; x += sx; } if (e2 <= dx) { err += dx; y += sy; }
+    if (x === cx1 && y === cy1) break;
+    var v = WORLD.truth[idx(x, y)];
+    if (v === T.BUILD) { if (obs.high) continue; return 0; }
+    if (v === T.RIDGE) { if (obs.air || obs.onRidge) continue; return 0; }
+    if (v === T.TREES) { f *= obs.high ? 0.92 : obs.air ? 0.8 : obs.mast ? 0.85 : 0.7; if (f < 0.25) return 0; }
+  }
+  return f;
+}
+function soundFactor(x0, y0, x1, y1) {
+  var n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) | 0, f = 1;
+  for (var i = 1; i < n; i++) { var x = Math.floor(x0 + (x1 - x0) * i / n), y = Math.floor(y0 + (y1 - y0) * i / n); if (WORLD.truth[idx(x, y)] === T.BUILD) f *= 0.85; }
+  return Math.max(f, 0.3);
+}
+
+/* road routing on a given grid; returns array of [x,y] cells or null */
+function bfsRoad(grid, a, b) {
+  if (grid[idx(a[0], a[1])] !== T.ROAD || grid[idx(b[0], b[1])] !== T.ROAD) return null;
+  var prev = new Int32Array(W * H).fill(-1), q = [idx(a[0], a[1])], seen = new Uint8Array(W * H), goal = idx(b[0], b[1]);
+  seen[q[0]] = 1;
+  for (var qi = 0; qi < q.length; qi++) {
+    var c = q[qi]; if (c === goal) break;
+    var cx = c % W, cy = (c / W) | 0;
+    [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) { var nx = cx + d[0], ny = cy + d[1]; if (!inb(nx, ny)) return; var n = idx(nx, ny); if (seen[n] || grid[n] !== T.ROAD) return; seen[n] = 1; prev[n] = c; q.push(n); });
+  }
+  if (!seen[goal]) return null;
+  var out = [], k = goal; while (k !== -1) { out.push([k % W, (k / W) | 0]); k = prev[k]; } return out.reverse();
+}
+function groundRoute(grid, wps) {
+  if (!wps || wps.length < 2) return { cells: wps && wps.length ? [wps[0]] : [], blocked: false, loop: false };
+  var cells = [], loopPts = wps.concat([wps[0]]), blocked = false, blockedAt = null;
+  for (var i = 0; i < loopPts.length - 1; i++) {
+    var seg = bfsRoad(grid, loopPts[i], loopPts[i + 1]);
+    if (!seg) { blocked = true; blockedAt = loopPts[i + 1]; break; }
+    if (cells.length) seg.shift(); cells = cells.concat(seg);
+  }
+  return { cells: cells, blocked: blocked, blockedAt: blockedAt, loop: !blocked };
+}
+function pathLength(pts, closed) { var L = 0; for (var i = 0; i < pts.length - 1; i++) L += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]); if (closed && pts.length > 1) L += Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]); return L; }
+
+function zoneCenterCell(z, kind, grid) {
+  var Z = ZONES[z], cx = (Z.x0 + Z.x1) / 2 | 0, cy = (Z.y0 + Z.y1) / 2 | 0, best = null, bd = 1e9;
+  for (var y = Z.y0; y <= Z.y1; y++) for (var x = Z.x0; x <= Z.x1; x++) {
+    var v = grid[idx(x, y)]; if (v === T.BUILD || v === T.WATER) continue;
+    if (kind === 'ground' && v !== T.ROAD) continue;
+    var d = Math.hypot(x - cx, y - cy) - (kind === 'mast' && v === T.RIDGE ? 6 : 0); if (d < bd) { bd = d; best = [x, y]; } }
+  return best;
+}
+function defaultPath(kind, z) {
+  var Z = ZONES[z];
+  if (kind === 'drone') return [[Z.x0 + 3, Z.y0 + 3], [Z.x1 - 3, Z.y0 + 3], [Z.x1 - 3, Z.y1 - 3], [Z.x0 + 3, Z.y1 - 3]];
+  if (kind === 'mast') return [zoneCenterCell(z, 'mast', WORLD.brief)];
+  var road = [];
+  for (var y = Z.y0; y <= Z.y1; y++) for (var x = Z.x0; x <= Z.x1; x++) if (WORLD.brief[idx(x, y)] === T.ROAD) road.push([x, y]);
+  var c = [road.reduce(function (a, b) { return b[0] < a[0] ? b : a; }), road.reduce(function (a, b) { return b[0] > a[0] ? b : a; }),
+           road.reduce(function (a, b) { return b[1] < a[1] ? b : a; }), road.reduce(function (a, b) { return b[1] > a[1] ? b : a; })];
+  var best = [c[0], c[1]], bd = -1;
+  for (var i = 0; i < 4; i++) for (var j = i + 1; j < 4; j++) { var d = Math.hypot(c[i][0] - c[j][0], c[i][1] - c[j][1]); if (d > bd) { bd = d; best = [c[i], c[j]]; } }
+  return best;
+}
+
+var ROUTES = {
+  drone: [['loop', 'Perimeter loop'], ['sweep', 'Sweep back and forth'], ['tight', 'Tight loop round the centre'], ['cross', 'Diagonal cross']],
+  ground: [['long', 'End to end'], ['short', 'Short shuttle'], ['junction', 'Shuttle to the junction']],
+  mast: [['centre', 'Zone centre'], ['high', 'On the ridge (zone Z4 only)'], ['corner', 'Corner facing the other zones']] };
+function nearestValid(z, tx, ty, kind, pred) {
+  var Z = ZONES[z], best = null, bd = 1e9;
+  for (var y = Z.y0; y <= Z.y1; y++) for (var x = Z.x0; x <= Z.x1; x++) {
+    var v = WORLD.brief[idx(x, y)]; if (v === T.BUILD || v === T.WATER) continue; if (kind === 'ground' && v !== T.ROAD) continue; if (pred && !pred(v)) continue;
+    var d = Math.hypot(x - tx, y - ty); if (d < bd) { bd = d; best = [x, y]; } }
+  return best;
+}
+function routeTemplate(kind, z, name) {
+  var Z = ZONES[z], cx = (Z.x0 + Z.x1) / 2 | 0, cy = (Z.y0 + Z.y1) / 2 | 0;
+  if (kind === 'drone') {
+    var a = Z.x0 + 3, b = Z.x1 - 3, c = Z.y0 + 3, d = Z.y1 - 3, m = (c + d) / 2 | 0;
+    if (name === 'sweep') return [[a, c], [b, c], [b, m], [a, m], [a, d], [b, d]];
+    if (name === 'tight') return [[cx - 6, cy - 4], [cx + 6, cy - 4], [cx + 6, cy + 4], [cx - 6, cy + 4]];
+    if (name === 'cross') return [[a, c], [b, d], [b, c], [a, d]];
+    return [[a, c], [b, c], [b, d], [a, d]];
+  }
+  if (kind === 'mast') {
+    if (name === 'high') { var h = nearestValid(z, cx, cy, 'mast', function (v) { return v === T.RIDGE; }); if (h) return [h]; }
+    if (name === 'corner') { var mx = Z.x0 === 0 ? Z.x1 - 2 : Z.x0 + 2, my = Z.y0 === 0 ? Z.y1 - 2 : Z.y0 + 2; return [nearestValid(z, mx, my, 'mast')]; }
+    return [zoneCenterCell(z, 'mast', WORLD.brief)];
+  }
+  var lp = defaultPath('ground', z);
+  if (name === 'short') { var rt = bfsRoad(WORLD.brief, lp[0], lp[1]); if (rt && rt.length > 2) return [lp[0], rt[rt.length / 2 | 0]]; }
+  if (name === 'junction') { var j = nearestValid(z, 29.5, 18.5, 'ground'); var far = Math.hypot(lp[0][0] - j[0], lp[0][1] - j[1]) > Math.hypot(lp[1][0] - j[0], lp[1][1] - j[1]) ? lp[0] : lp[1]; if (j[0] !== far[0] || j[1] !== far[1]) return [far, j]; }
+  return lp;
+}
+var PRESETS = {
+  drone: { A: { label: 'High and wide', primary: 'camera', fallback: 'thermal', alt: 'high', speed: 'normal', onDet: 'carry' },
+           B: { label: 'Low and close', primary: 'camera', fallback: 'acoustic', alt: 'low', speed: 'slow', onDet: 'once' },
+           C: { label: 'Fast sweep', primary: 'thermal', fallback: 'acoustic', alt: 'high', speed: 'fast', onDet: 'carry' } },
+  ground: { A: { label: 'Road patrol', primary: 'lidar', fallback: 'acoustic', speed: 'normal', onDet: 'carry' },
+            B: { label: 'Stop and look', primary: 'camera', fallback: 'thermal', speed: 'slow', onDet: 'once' },
+            C: { label: 'Radar runner', primary: 'radar', fallback: 'acoustic', speed: 'fast', onDet: 'carry' } },
+  mast: { A: { label: 'Thermal post', primary: 'thermal', fallback: 'camera' },
+          B: { label: 'Radar post', primary: 'radar', fallback: 'acoustic' },
+          C: { label: 'Lidar post', primary: 'lidar', fallback: 'acoustic' } } };
+
+function defaultConfig() {
+  var zones = { drone: 1, ground: 0, mast: 2 };
+  var cfg = { command: { zones: zones, threshold: 50, interval: 0, budget: 8, revisit: true },
+              operator: { order: 'oldest', filter: 0, expiry: 22 }, drone: {}, ground: {}, mast: {} };
+  ['drone', 'ground', 'mast'].forEach(function (k) { applyPreset(cfg, k, 'A'); });
+  return cfg;
+}
+function applyPreset(cfg, kind, key) {
+  var p = PRESETS[kind][key], old = cfg[kind] || {}, z = cfg.command.zones[kind];
+  var a = { preset: key, primary: p.primary, fallback: p.fallback, lostRule: old.lostRule || 'carry' };
+  if (kind !== 'mast') { a.speed = p.speed; a.onDet = p.onDet; }
+  if (kind === 'drone') a.alt = p.alt;
+  if (kind === 'mast') { var keepPos = old.pos && zoneOf(old.pos[0], old.pos[1]) === z; a.pos = keepPos ? old.pos : routeTemplate('mast', z, 'centre')[0]; a.route = keepPos ? (old.route || 'centre') : 'centre'; }
+  else { var keep = old.path && old.path.length >= 2 && old.path.every(function (q) { return zoneOf(q[0], q[1]) === z; }); a.path = keep ? old.path : routeTemplate(kind, z, kind === 'drone' ? 'loop' : 'long'); a.route = keep ? (old.route || 'custom') : (kind === 'drone' ? 'loop' : 'long'); }
+  cfg[kind] = a;
+}
+
+var ROUNDS = {
+  1: { seed: 1101, weather: 'clear', injects: [] },
+  2: { seed: 2202, weather: 'night', injects: [{ t: 100, type: 'comms', dur: 30 }, { t: 170, type: 'sensor', asset: 'drone' }, { t: 230, type: 'gps', asset: 'ground' }] },
+  3: { seed: 3303, weather: 'rain', injects: [{ t: 80, type: 'comms', dur: 25 }, { t: 140, type: 'weather', w: 'dust' }, { t: 200, type: 'lost', asset: 'drone' }, { t: 250, type: 'sensor', asset: 'mast' }] } };
+function roundSpec(r, ov) {
+  ov = ov || {}; var b = ROUNDS[r] || ROUNDS[1];
+  return { round: r, seed: ov.seed != null && ov.seed !== '' ? +ov.seed : b.seed, weather: ov.weather || b.weather, length: +(ov.length || 360), injects: b.injects.slice() };
+}
+
+function validate(cfg) {
+  var errs = [];
+  ['drone', 'ground', 'mast'].forEach(function (k) {
+    var a = cfg[k], n = ASSETS[k].name;
+    if (!a.primary) errs.push(n + ': choose a primary sensor.');
+    if (a.primary && a.primary === a.fallback) errs.push(n + ': primary and fallback must be different.');
+    if (payloadOf(a) > PAYLOAD) errs.push(n + ': sensors weigh ' + payloadOf(a) + ', the limit is ' + PAYLOAD + '.');
+    if (k === 'mast' && !a.pos) errs.push('Sensor mast: place it on the map.');
+    if (k !== 'mast' && (!a.path || a.path.length < 2)) errs.push(n + ': draw at least two patrol points.');
+  });
+  return errs;
+}
+
+/* ---------- mission ---------- */
+function createSim(cfg, spec) {
+  var S = { cfg: JSON.parse(JSON.stringify(cfg)), spec: spec, t: 0, done: false, weather: spec.weather,
+    observed: new Uint8Array(W * H), lastSeen: new Float32Array(W * H).fill(-1e9), watchSum: 0, watchN: 0, returned: new Uint8Array(W * H), obsBy: {}, reports: [], pending: [], outbox: [], events: [],
+    counters: { belowTh: 0, dropped: 0, dedup: 0, detections: 0 }, commsDown: false, commsUntil: 0, nextId: 1, maxQueue: 0,
+    injectIdx: 0, contactRng: rngFor(spec.seed, 'contacts'), assets: {} };
+  var cmd = S.cfg.command;
+  ['drone', 'ground', 'mast'].forEach(function (k) {
+    var a = S.cfg[k], st = { kind: k, name: ASSETS[k].name, alive: true, landed: false, primaryFailed: false, gpsLost: false, halted: false,
+      off: [0, 0], drift: 0, revisit: null, cooldown: 0, tokens: cmd.budget, lastSent: {}, rng: rngFor(spec.seed, 'asset:' + k),
+      notes: {}, failed: {}, wp: 0, stats: { reports: 0, realDet: {}, falseSent: 0, observed: 0 } };
+    st.driftAng = st.rng() * Math.PI * 2;
+    S.obsBy[k] = new Uint8Array(W * H);
+    if (k === 'mast') { st.x = a.pos[0] + 0.5; st.y = a.pos[1] + 0.5; st.launch = [st.x, st.y]; st.onRidge = WORLD.truth[idx(a.pos[0], a.pos[1])] === T.RIDGE; }
+    else if (k === 'drone') { st.route = a.path.map(function (p) { return [p[0] + 0.5, p[1] + 0.5]; }); st.x = st.route[0][0]; st.y = st.route[0][1]; st.launch = [st.x, st.y]; st.wp = 1 % st.route.length; st.endurance = droneEndurance(a); }
+    else { var r = groundRoute(WORLD.truth, a.path); st.route = r.cells.map(function (p) { return [p[0] + 0.5, p[1] + 0.5]; }); st.loop = r.loop; st.blocked = r.blocked; st.blockedAt = r.blockedAt; st.dir = 1;
+      if (!st.route.length) st.route = [[a.path[0][0] + 0.5, a.path[0][1] + 0.5]]; st.x = st.route[0][0]; st.y = st.route[0][1]; st.launch = [st.x, st.y]; st.wp = st.route.length > 1 ? 1 : 0; }
+    S.assets[k] = st;
+  });
+  ev(S, 'Mission start. Weather: ' + WEATHER[S.weather].label + '.');
+  return S;
+}
+function ev(S, text, kind) { S.events.push({ t: Math.round(S.t * 10) / 10, text: text, kind: kind || 'info' }); }
+function activeSensor(S, st) {
+  var a = S.cfg[st.kind], m = WEATHER[S.weather].m;
+  var pOk = a.primary && !st.primaryFailed && m[a.primary] >= 0.3;
+  if (pOk) { if (st.notes.fb) { st.notes.fb = false; ev(S, st.name + ': primary sensor working again.'); } return a.primary; }
+  if (!st.notes.fb) { st.notes.fb = true; ev(S, st.name + ': ' + (st.primaryFailed ? 'primary sensor fault' : 'primary sensor blinded by ' + WEATHER[S.weather].label.toLowerCase()) + (a.fallback ? ', fallback ' + SENSORS[a.fallback].name.toLowerCase() + ' active.' : ', no fallback fitted.'), 'warn'); }
+  if (a.fallback && m[a.fallback] >= 0.3 && !st.failed[a.fallback]) return a.fallback;
+  if (!st.notes.none) { st.notes.none = true; ev(S, st.name + ': no working sensor left.', 'warn'); }
+  return null;
+}
+function moveToward(st, tx, ty, dist) { var dx = tx - st.x, dy = ty - st.y, d = Math.hypot(dx, dy); if (d <= dist) { st.x = tx; st.y = ty; return true; } st.x += dx / d * dist; st.y += dy / d * dist; return false; }
+
+function stepAsset(S, st, dt) {
+  if (!st.alive || st.landed || st.kind === 'mast') return;
+  var a = S.cfg[st.kind];
+  if (st.kind === 'drone' && S.t >= st.endurance) { st.landed = true; ev(S, 'Drone: battery empty, drone has landed.', 'warn'); return; }
+  var v = ASSETS[st.kind].speeds[a.speed] * dt, moved = false;
+  if (st.halted) return;
+  if (st.revisit) {
+    var R = st.revisit;
+    if (st.kind === 'drone' && !R.arrived) { R.arrived = moveToward(st, R.x, R.y, v); moved = true; }
+    else { if (R.until == null) R.until = S.t + REVISIT[a.onDet]; if (S.t >= R.until) { st.revisit = null; st.cooldown = S.t + 10; } }
+  } else if (st.returning) {
+    if (moveToward(st, st.launch[0], st.launch[1], v)) { st.halted = true; ev(S, st.name + ': back at its start point, holding.'); } moved = true;
+  } else if (st.route.length > 1) {
+    var tgt = st.route[st.wp];
+    if (moveToward(st, tgt[0], tgt[1], v)) {
+      if (st.kind === 'drone' || st.loop) st.wp = (st.wp + 1) % st.route.length;
+      else { if (st.wp === st.route.length - 1 && st.dir === 1) { st.dir = -1; if (st.blocked && !st.notes.blk) { st.notes.blk = true; ev(S, 'Ground robot: route blocked near ' + square(st.blockedAt ? st.blockedAt[0] : st.x, st.blockedAt ? st.blockedAt[1] : st.y) + ', turning back.', 'warn'); } }
+             else if (st.wp === 0 && st.dir === -1) st.dir = 1; st.wp += st.dir; }
+    }
+    moved = true;
+  }
+  if (moved && st.gpsLost) { st.off[0] += (Math.cos(st.driftAng) * 0.09 + gauss(st.rng) * 0.04) * dt; st.off[1] += (Math.sin(st.driftAng) * 0.09 + gauss(st.rng) * 0.04) * dt; }
+}
+
+function sense(S, st) {
+  if (!st.alive || st.landed) return;
+  var a = S.cfg[st.kind], s = activeSensor(S, st); if (!s) return;
+  var SN = SENSORS[s], m = WEATHER[S.weather].m[s], high = st.kind === 'drone' && a.alt === 'high';
+  var obs = { air: st.kind === 'drone', high: high, mast: st.kind === 'mast', onRidge: !!st.onRidge };
+  var R = SN.range * (high ? 1.3 : 1) * (st.kind === 'mast' ? 1.15 : 1), altQ = high ? 0.65 : 1, spdQ = st.kind === 'mast' ? 1.1 : SPEEDQ[a.speed];
+  var rb = st.revisit ? 1.3 : 1, r = st.rng, cmd = S.cfg.command;
+  if (SN.map) {
+    var x0 = Math.max(0, Math.floor(st.x - R)), x1 = Math.min(W - 1, Math.ceil(st.x + R)), y0 = Math.max(0, Math.floor(st.y - R)), y1 = Math.min(H - 1, Math.ceil(st.y + R));
+    for (var y = y0; y <= y1; y++) for (var x = x0; x <= x1; x++) {
+      if (Math.hypot(x + 0.5 - st.x, y + 0.5 - st.y) > R) continue;
+      var i = idx(x, y);
+      if (losFactor(st.x, st.y, x + 0.5, y + 0.5, obs) <= 0) continue;
+      S.lastSeen[i] = S.t; S.observed[i] = 1; S.obsBy[st.kind][i] = 1; var v = WORLD.truth[i]; if (v === T.BUILD || v === T.TREES) S.returned[i] = 1;
+    }
+  }
+  CONTACTS.forEach(function (c) {
+    var p = contactPos(c, S.t), d = Math.hypot(p.x - st.x, p.y - st.y); if (d > R) { r(); r(); return; }
+    var f = SN.los ? losFactor(st.x, st.y, p.x, p.y, obs) : soundFactor(st.x, st.y, p.x, p.y);
+    var base;
+    if (c.real) { base = DET[s][c.kind]; if (s === 'acoustic' && c.kind === 'vehicle' && !engineOn(c, S.t)) base *= 0.15; if (s === 'radar' && p.moving) base = Math.min(0.95, base * 1.6); }
+    else base = CLUT[c.kind][s];
+    var q = base * m * f * (1 - 0.5 * d / R) * altQ * spdQ * rb, roll = r(), n = gauss(r);
+    if (f <= 0 || roll >= Math.min(0.9, q * 0.5)) return;
+    var conf = c.real ? clamp(0.3 + 0.6 * q + 0.12 * n, 0.05, 0.99) : clamp(0.2 + 0.6 * q + 0.12 * n, 0.05, 0.95);
+    var pe = SN.posErr * (high ? 1.5 : 1);
+    var dd = describe(c, s, p.moving, r);
+    detect(S, st, s, { x: p.x + gauss(r) * pe + st.off[0], y: p.y + gauss(r) * pe + st.off[1], conf: Math.round(conf * 100), src: c.id, real: c.real, tx: p.x, ty: p.y, desc: dd[0], look: dd[1], moving: p.moving });
+    if (c.real) st.stats.realDet[c.id] = 1;
+  });
+  var spur = SN.spur * ((S.weather === 'rain' && (s === 'acoustic' || s === 'lidar')) ? 1.6 : 1);
+  if (r() < spur) {
+    var ang = r() * Math.PI * 2, dd = Math.sqrt(r()) * R, sx = clamp(st.x + Math.cos(ang) * dd, 0, W - 0.01), sy = clamp(st.y + Math.sin(ang) * dd, 0, H - 0.01);
+    detect(S, st, s, { x: sx + st.off[0], y: sy + st.off[1], conf: Math.round(15 + r() * 47), src: 'S' + (S.nextId + S.counters.detections), real: false, tx: sx, ty: sy, desc: VAGUE[Math.floor(r() * VAGUE.length)], look: 'unclear', moving: false });
+  }
+  void cmd;
+}
+function detect(S, st, sensor, d) {
+  S.counters.detections++;
+  var cmd = S.cfg.command;
+  d.x = clamp(d.x, 0, W - 0.01); d.y = clamp(d.y, 0, H - 0.01);
+  if (d.conf < cmd.threshold) { S.counters.belowTh++; return; }
+  if (st.lastSent[d.src] != null && S.t - st.lastSent[d.src] < 25) { S.counters.dedup++; return; }
+  st.lastSent[d.src] = S.t;
+  var a = S.cfg[st.kind];
+  if (cmd.revisit && a.onDet && a.onDet !== 'carry' && !st.revisit && S.t >= st.cooldown && st.kind !== 'mast' && !st.halted)
+    st.revisit = { x: clamp(d.x, 0, W - 1), y: clamp(d.y, 0, H - 1), arrived: st.kind !== 'drone' };
+  S.outbox.push({ asset: st.kind, sensor: sensor, tDet: S.t, x: d.x, y: d.y, conf: d.conf, src: d.src, real: d.real, tx: d.tx, ty: d.ty, desc: d.desc, look: d.look, moving: d.moving, wx: S.weather });
+  if (!cmd.interval) flushOutbox(S);
+}
+function flushOutbox(S) {
+  var box = S.outbox; S.outbox = [];
+  if (S.cfg.command.interval) { var best = {}; box.forEach(function (r) { var k = r.asset + '|' + r.src; if (!best[k] || best[k].conf < r.conf) best[k] = r; }); box = Object.keys(best).map(function (k) { return best[k]; }).sort(function (a, b) { return a.tDet - b.tDet; }); }
+  box.forEach(function (r) {
+    var st = S.assets[r.asset];
+    if (st.tokens < 1) { S.counters.dropped++; return; }
+    st.tokens -= 1;
+    if (S.commsDown) S.pending.push(r); else deliver(S, r);
+  });
+}
+function deliver(S, r) {
+  var op = S.cfg.operator;
+  r.id = S.nextId++; r.tArr = S.t; r.square = square(r.x, r.y); r.exp = S.t + op.expiry;
+  r.status = r.conf < op.filter ? 'filtered' : 'open';
+  S.reports.push(r); S.assets[r.asset].stats.reports++; if (!r.real) S.assets[r.asset].stats.falseSent++;
+}
+function applyInject(S, inj) {
+  var st = inj.asset ? S.assets[inj.asset] : null;
+  if (inj.type === 'comms') { S.commsDown = true; S.commsUntil = S.t + inj.dur; ev(S, 'Comms: link to all robots lost. Reports are being held.', 'warn'); }
+  if (inj.type === 'sensor' && st) { var cur = activeSensor(S, st); if (cur) { st.failed[cur] = true; if (cur === S.cfg[st.kind].primary) st.primaryFailed = true; ev(S, st.name + ': ' + SENSORS[cur].name.toLowerCase() + ' has failed.', 'warn'); } }
+  if (inj.type === 'gps' && st) { st.gpsLost = true; ev(S, st.name + ': satellite positioning lost.', 'warn'); var rule = S.cfg[st.kind].lostRule || 'carry';
+    if (rule === 'stop') { st.halted = true; st.revisit = null; ev(S, st.name + ': rule "stop" applied, holding position.'); } else if (rule === 'return') { st.returning = true; st.revisit = null; ev(S, st.name + ': rule "return" applied, heading back.'); } else ev(S, st.name + ': rule "carry on" applied.'); }
+  if (inj.type === 'lost' && st) { st.alive = false; ev(S, st.name + ': contact with the platform lost.', 'warn'); }
+  if (inj.type === 'weather') { S.weather = inj.w; ev(S, 'Weather changed: ' + WEATHER[inj.w].label + '.', 'warn'); }
+}
+function step(S, dt) {
+  if (S.done) return;
+  var prev = S.t; S.t = Math.round((S.t + dt) * 1000) / 1000;
+  while (S.injectIdx < S.spec.injects.length && S.spec.injects[S.injectIdx].t <= S.t) applyInject(S, S.spec.injects[S.injectIdx++]);
+  if (S.commsDown && S.t >= S.commsUntil) { S.commsDown = false; var n = S.pending.length; S.pending.forEach(function (r) { deliver(S, r); }); S.pending = []; ev(S, 'Comms restored. ' + n + ' held report' + (n === 1 ? '' : 's') + ' delivered late.'); }
+  ['drone', 'ground', 'mast'].forEach(function (k) { stepAsset(S, S.assets[k], dt); });
+  if (Math.floor(S.t) > Math.floor(prev)) {
+    var cmd = S.cfg.command;
+    ['drone', 'ground', 'mast'].forEach(function (k) { var st = S.assets[k]; st.tokens = Math.min(cmd.budget, st.tokens + cmd.budget / 60); sense(S, st); });
+    if (cmd.interval && Math.floor(S.t) % cmd.interval === 0) flushOutbox(S);
+    var w = 0; for (var c = 0; c < W * H; c++) if (S.t - S.lastSeen[c] <= 60) w++; S.watchSum += w; S.watchN++;
+    var open = 0; S.reports.forEach(function (r) { if (r.status === 'open') open++; }); if (open > S.maxQueue) S.maxQueue = open;
+  }
+  S.reports.forEach(function (r) { if (r.status === 'open' && S.t >= r.exp) { r.status = 'expired'; r.tDec = r.exp; } });
+  if (S.t >= S.spec.length) {
+    S.done = true; if (S.cfg.command.interval) flushOutbox(S);
+    S.reports.forEach(function (r) { if (r.status === 'open') { r.status = 'expired'; r.tDec = S.t; } });
+    ev(S, 'Mission over.');
+  }
+}
+function decide(S, id, decision) {
+  for (var i = 0; i < S.reports.length; i++) { var r = S.reports[i]; if (r.id === id && r.status === 'open') { r.status = decision; r.tDec = S.t; return true; } }
+  return false;
+}
+function queue(S) {
+  var o = S.cfg.operator.order, q = S.reports.filter(function (r) { return r.status === 'open'; });
+  q.sort(o === 'confidence' ? function (a, b) { return b.conf - a.conf || a.tArr - b.tArr; } : o === 'newest' ? function (a, b) { return b.tArr - a.tArr; } : function (a, b) { return a.tArr - b.tArr || a.id - b.id; });
+  return q;
+}
+function score(S) {
+  var found = {}, badSrc = {}, falseConf = 0, misplaced = 0, expired = 0, tFirst = null, decTimes = [];
+  S.reports.forEach(function (r) {
+    if (r.status === 'expired') expired++;
+    if (r.status === 'confirmed' || r.status === 'rejected') decTimes.push(r.tDec - r.tArr);
+    if (r.status !== 'confirmed') return;
+    var err = Math.hypot(r.x - r.tx, r.y - r.ty);
+    if (r.real && err <= 5) { if (!found[r.src]) found[r.src] = r.tDec; if (tFirst == null || r.tDec < tFirst) tFirst = r.tDec; }
+    else { badSrc[r.src] = r.real ? 'm' : 'f'; }
+  });
+  Object.keys(badSrc).forEach(function (k) { if (found[k] != null) return; falseConf++; if (badSrc[k] === 'm') misplaced++; });
+  var obs = 0; for (var i = 0; i < W * H; i++) obs += S.observed[i];
+  var area = S.watchN ? Math.round(S.watchSum / S.watchN / (W * H) * 100) : 0, seenOnce = Math.round(obs / (W * H) * 100), nFound = Object.keys(found).length;
+  var pts = { found: nFound * 30, falseConf: -20 * falseConf, expired: -4 * expired, area: area, first: tFirst == null ? 0 : Math.max(0, Math.round(30 - tFirst / 8)), dropped: -S.counters.dropped };
+  var total = 0; Object.keys(pts).forEach(function (k) { total += pts[k]; });
+  var perAsset = {};
+  ['drone', 'ground', 'mast'].forEach(function (k) { var st = S.assets[k], o = 0; for (var i = 0; i < W * H; i++) o += S.obsBy[k][i]; perAsset[k] = { area: Math.round(o / (W * H) * 100), realDetected: Object.keys(st.stats.realDet).length, reports: st.stats.reports, falseSent: st.stats.falseSent }; });
+  var meanDec = decTimes.length ? decTimes.reduce(function (a, b) { return a + b; }, 0) / decTimes.length : 0;
+  return { seenOnce: seenOnce, found: nFound, foundIds: Object.keys(found), falseConf: falseConf, misplaced: misplaced, expired: expired, area: area, tFirst: tFirst, dropped: S.counters.dropped,
+           pts: pts, total: total, perAsset: perAsset, workload: { expired: expired, meanDecision: Math.round(meanDec * 10) / 10, maxQueue: S.maxQueue, reports: S.reports.length, filtered: S.reports.filter(function (r) { return r.status === 'filtered'; }).length } };
+}
+function runHeadless(cfg, spec, policy) {
+  var S = createSim(cfg, spec);
+  while (!S.done) { step(S, 0.25); if (policy) policy(S); }
+  return S;
+}
+function logHash(S) { return hashStr(JSON.stringify(S.reports.map(function (r) { return [r.id, r.asset, r.sensor, r.tArr, r.conf, r.src, r.status, Math.round(r.x * 100)]; })) + JSON.stringify(S.events)); }
+
+root.SimCore = { DET: DET, CLUT: CLUT, W: W, H: H, CELL_M: CELL_M, T: T, WORLD: WORLD, ZONES: ZONES, CONTACTS: CONTACTS, SENSORS: SENSORS, WEATHER: WEATHER, ASSETS: ASSETS, PRESETS: PRESETS,
+  REVISIT: REVISIT, PAYLOAD: PAYLOAD, idx: idx, inb: inb, zoneOf: zoneOf, square: square, rating: rating, payloadOf: payloadOf, droneEndurance: droneEndurance,
+  contactPos: contactPos, ROUTES: ROUTES, routeTemplate: routeTemplate, groundRoute: groundRoute, bfsRoad: bfsRoad, pathLength: pathLength, defaultPath: defaultPath, defaultConfig: defaultConfig,
+  applyPreset: applyPreset, roundSpec: roundSpec, validate: validate, createSim: createSim, step: step, decide: decide, queue: queue, score: score,
+  runHeadless: runHeadless, logHash: logHash, hashStr: hashStr };
+if (typeof module !== 'undefined' && module.exports) module.exports = root.SimCore;
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+
+<script id="ui">
+/* ================= USER INTERFACE ================= */
+(function () {
+'use strict';
+var C = window.SimCore, W = C.W, H = C.H, T = C.T, PX = 16;
+var KINDS = ['drone', 'ground', 'mast'];
+var PHASES = [['setup', 'Setup'], ['mission', 'Mission'], ['gap', 'Gap'], ['debrief', 'Debrief']];
+var COL = { open: '#EFEAD8', build: '#6B5B6E', trees: '#7FA36B', ridge: '#C9A27A', road: '#B9B9B9', marsh: '#9CC3B9', water: '#5B8FD1' };
+var ACOL = { drone: '#B1059D', ground: '#D99216', mast: '#45004D' };
+var STORE = 'patrolsim.v1';
+
+var U = { group: 'Group 1', round: 1, phase: 'setup', cfg: C.defaultConfig(), sim: null, running: false, speed: 1, sel: 'drone', sideTab: 'drone',
+  gapTab: 'record', mapMode: 'briefing', corrections: [], corrType: 'demolished', texts: { op: '', dir: { drone: '', ground: '', mast: '' }, aar: '' },
+  workload: [3, 3, 3], hover: null, ov: { seed: '', length: 360, weather: '' }, results: [], big: false };
+
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function mmss(t) { t = Math.max(0, Math.floor(t)); return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'); }
+function msg(text, err) { var d = document.createElement('div'); d.className = 'msg' + (err ? ' err' : ''); d.textContent = text; document.body.appendChild(d); setTimeout(function () { d.remove(); }, err ? 4200 : 2600); }
+function save() { try { localStorage.setItem(STORE, JSON.stringify({ group: U.group, round: U.round, cfg: U.cfg, corrections: U.corrections, texts: U.texts, workload: U.workload, ov: U.ov, results: U.results, big: U.big })); } catch (e) { /* storage unavailable */ } }
+function load() { try { var s = JSON.parse(localStorage.getItem(STORE) || 'null'); if (s) { ['group', 'round', 'cfg', 'corrections', 'texts', 'workload', 'ov', 'results', 'big'].forEach(function (k) { if (s[k] != null) U[k] = s[k]; }); } } catch (e) { /* ignore */ } }
+function spec() { return C.roundSpec(U.round, U.ov); }
+function locked() { return U.round === 1; }
+
+/* ---------- map drawing ---------- */
+var cv = $('map'), ctx = cv.getContext('2d'), terrainCache = {};
+function terrainImage(grid, key) {
+  if (terrainCache[key]) return terrainCache[key];
+  var c = document.createElement('canvas'); c.width = W * PX; c.height = H * PX; var g = c.getContext('2d');
+  for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
+    var v = grid[C.idx(x, y)]; g.fillStyle = v === T.BUILD ? COL.build : v === T.TREES ? COL.trees : v === T.RIDGE ? COL.ridge : v === T.ROAD ? COL.road : v === T.MARSH ? COL.marsh : v === T.WATER ? COL.water : COL.open;
+    g.fillRect(x * PX, y * PX, PX, PX);
+  }
+  g.font = 'bold 13px Arial'; g.fillStyle = 'rgba(30,30,30,.75)';
+  [['Built-up block', 37, 9.3], ['Tree line', 17.2, 7], ['Ridge', 46, 23.8], ['Marsh', 49, 34], ['Road', 6, 19.4], ['Farm', 3.6, 38.3]].forEach(function (l) { g.fillText(l[0], l[1] * PX, l[2] * PX); });
+  terrainCache[key] = c; return c;
+}
+function drawGrid() {
+  ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = 1;
+  for (var x = 0; x <= W; x += 10) { ctx.beginPath(); ctx.moveTo(x * PX, 0); ctx.lineTo(x * PX, H * PX); ctx.stroke(); }
+  for (var y = 0; y <= H; y += 10) { ctx.beginPath(); ctx.moveTo(0, y * PX); ctx.lineTo(W * PX, y * PX); ctx.stroke(); }
+  ctx.font = 'bold 12px Arial'; ctx.fillStyle = 'rgba(0,0,0,.55)';
+  for (var i = 0; i < 6; i++) for (var j = 0; j < 4; j++) ctx.fillText('ABCDEF'.charAt(i) + (j + 1), i * 10 * PX + 4, j * 10 * PX + 14);
+  ctx.strokeStyle = 'rgba(69,0,77,.85)'; ctx.lineWidth = 3; ctx.setLineDash([10, 6]);
+  ctx.beginPath(); ctx.moveTo(30 * PX, 0); ctx.lineTo(30 * PX, H * PX); ctx.moveTo(0, 20 * PX); ctx.lineTo(W * PX, 20 * PX); ctx.stroke(); ctx.setLineDash([]);
+  ctx.font = 'bold 20px Arial'; ctx.fillStyle = 'rgba(69,0,77,.85)';
+  C.ZONES.forEach(function (z) { ctx.fillText(z.name, (z.x1 - 3.5) * PX, (z.y1 - 0.6) * PX); });
+}
+function drawUnitMap() {
+  var S = U.sim; ctx.fillStyle = '#9a9a9a'; ctx.fillRect(0, 0, W * PX, H * PX);
+  if (!S) return;
+  for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) { var i = C.idx(x, y); if (!S.observed[i]) continue; ctx.fillStyle = S.returned[i] ? '#2b2b2b' : '#f4f4f4'; ctx.fillRect(x * PX, y * PX, PX, PX); }
+}
+function dot(x, y, r, fill, stroke) { ctx.beginPath(); ctx.arc(x * PX, y * PX, r, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill(); if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke(); } }
+function drawPaths() {
+  KINDS.forEach(function (k) {
+    var a = U.cfg[k]; ctx.strokeStyle = ACOL[k]; ctx.fillStyle = ACOL[k]; ctx.lineWidth = k === U.sel && U.phase === 'setup' ? 4 : 2.5;
+    if (k === 'mast') { if (a.pos) { ctx.fillRect((a.pos[0]) * PX - 2, (a.pos[1]) * PX - 2, PX + 4, PX + 4); ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Arial'; ctx.fillText('M', a.pos[0] * PX + 3, a.pos[1] * PX + 12); } return; }
+    var p = a.path || []; if (!p.length) return;
+    var pts = k === 'ground' ? (C.groundRoute(C.WORLD.brief, p).cells) : p.concat([p[0]]);
+    ctx.beginPath(); pts.forEach(function (q, i) { var X = (q[0] + 0.5) * PX, Y = (q[1] + 0.5) * PX; if (i) ctx.lineTo(X, Y); else ctx.moveTo(X, Y); }); ctx.stroke();
+    p.forEach(function (q, i) { dot(q[0] + 0.5, q[1] + 0.5, 7, ACOL[k], '#fff'); ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Arial'; ctx.fillText(String(i + 1), (q[0] + 0.5) * PX - 3, (q[1] + 0.5) * PX + 4); });
+  });
+}
+function drawAssets(truth) {
+  var S = U.sim; if (!S) return;
+  KINDS.forEach(function (k) {
+    var st = S.assets[k], x = truth ? st.x : st.x + st.off[0], y = truth ? st.y : st.y + st.off[1];
+    var gone = !st.alive || st.landed;
+    ctx.save(); ctx.globalAlpha = gone ? 0.35 : 1;
+    if (k === 'mast') { ctx.fillStyle = ACOL[k]; ctx.fillRect(x * PX - 9, y * PX - 9, 18, 18); }
+    else if (k === 'drone') { ctx.beginPath(); ctx.moveTo(x * PX, y * PX - 11); ctx.lineTo(x * PX + 10, y * PX + 8); ctx.lineTo(x * PX - 10, y * PX + 8); ctx.closePath(); ctx.fillStyle = ACOL[k]; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
+    else dot(x, y, 9, ACOL[k], '#fff');
+    ctx.fillStyle = '#000'; ctx.font = 'bold 12px Arial'; ctx.fillText(C.ASSETS[k].name + (gone ? ' (out)' : st.gpsLost && !truth ? ' (position?)' : ''), x * PX + 12, y * PX - 8);
+    ctx.restore();
+  });
+}
+function drawPicture() {
+  var S = U.sim; if (!S) return;
+  S.reports.forEach(function (r) {
+    if (r.status === 'confirmed') { if (U.phase === 'debrief' && U.mapMode === 'truth') { dot(r.x, r.y, 4, 'rgba(27,110,32,.8)'); return; } dot(r.x, r.y, 8, 'rgba(27,110,32,.9)', '#fff'); ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Arial'; ctx.fillText('✓', r.x * PX - 4, r.y * PX + 4); }
+    else if (r.status === 'open') dot(r.x, r.y, 5, 'rgba(177,5,157,.55)');
+  });
+  if (U.hover != null) { var h = S.reports.filter(function (r) { return r.id === U.hover; })[0]; if (h) { ctx.strokeStyle = '#B1059D'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(h.x * PX, h.y * PX, 18, 0, Math.PI * 2); ctx.stroke(); } }
+}
+function drawTruth() {
+  var S = U.sim, t = S ? S.t : 0;
+  C.WORLD.errors.forEach(function (e) { ctx.strokeStyle = '#B3261E'; ctx.lineWidth = 3; ctx.setLineDash([6, 4]); ctx.strokeRect(e.x * PX - 4, e.y * PX - 4, e.w * PX + 8, e.h * PX + 8); ctx.setLineDash([]); ctx.fillStyle = '#B3261E'; ctx.font = 'bold 12px Arial'; ctx.fillText(e.label, e.x * PX, (e.y + e.h) * PX + 16); });
+  var sc = S ? C.score(S) : null;
+  C.CONTACTS.forEach(function (c) {
+    var p = C.contactPos(c, t), found = sc && sc.foundIds.indexOf(c.id) >= 0;
+    if (c.real) { dot(p.x, p.y, 10, found ? '#1B6E20' : '#B3261E', '#fff'); } else { ctx.fillStyle = '#D99216'; ctx.fillRect(p.x * PX - 8, p.y * PX - 8, 16, 16); }
+    var lab = c.label + (c.real ? (found ? ' — found' : ' — missed') : ''); ctx.font = 'bold 12px Arial'; var lw = ctx.measureText(lab).width, lx = p.x * PX + 12 + lw > W * PX - 4 ? p.x * PX - 12 - lw : p.x * PX + 12;
+    ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillRect(lx - 2, p.y * PX - 9, lw + 4, 17); ctx.fillStyle = '#000'; ctx.fillText(lab, lx, p.y * PX + 4);
+  });
+}
+function drawCorrections() {
+  U.corrections.forEach(function (m, i) {
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#B3261E'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc((m.x + 0.5) * PX, (m.y + 0.5) * PX, 11, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#B3261E'; ctx.font = 'bold 13px Arial'; ctx.fillText(String(i + 1), (m.x + 0.5) * PX - 4, (m.y + 0.5) * PX + 5);
+  });
+}
+function draw() {
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  var mode = U.mapMode;
+  if (mode === 'unit') drawUnitMap(); else ctx.drawImage(terrainImage(mode === 'truth' ? C.WORLD.truth : C.WORLD.brief, mode === 'truth' ? 't' : 'b'), 0, 0);
+  if (U.phase === 'mission' && mode === 'briefing' && U.sim) { ctx.fillStyle = 'rgba(255,255,255,.35)'; for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) if (U.sim.observed[C.idx(x, y)]) ctx.fillRect(x * PX, y * PX, PX, PX); }
+  drawGrid();
+  if (U.phase === 'setup') drawPaths();
+  if (U.phase === 'gap' || U.phase === 'debrief') drawCorrections();
+  if (U.phase === 'mission' || U.phase === 'gap') { drawPicture(); drawAssets(false); }
+  if (U.phase === 'debrief') { if (mode === 'truth') drawTruth(); drawPicture(); drawAssets(mode === 'truth'); }
+}
+
+/* ---------- sensor view: what the robot actually gets ---------- */
+var CAPTION = { camera: 'Shape and colour, if there is light. Cannot see heat.', thermal: 'Heat only. Shows that something is warm, not what it is.',
+  lidar: 'Exact shape and distance as points. No colour, no heat.', radar: 'Something is there, and whether it moves. Not what it is.',
+  acoustic: 'A sound and roughly where it came from. No position, no shape.' };
+function vrng(seed) { var a = seed >>> 0; return function () { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; }; }
+function shape(g, look, cx, cy, k, r) {
+  g.beginPath();
+  if (look === 'person') { g.arc(cx, cy - 34 * k, 7 * k, 0, 7); g.rect(cx - 8 * k, cy - 27 * k, 16 * k, 26 * k); g.rect(cx - 7 * k, cy - 2 * k, 5 * k, 20 * k); g.rect(cx + 2 * k, cy - 2 * k, 5 * k, 20 * k); }
+  else if (look === 'vehicle') { g.rect(cx - 44 * k, cy - 14 * k, 88 * k, 22 * k); g.rect(cx - 18 * k, cy - 30 * k, 36 * k, 17 * k); g.moveTo(cx - 20 * k, cy + 10 * k); g.arc(cx - 26 * k, cy + 10 * k, 8 * k, 0, 7); g.moveTo(cx + 34 * k, cy + 10 * k); g.arc(cx + 26 * k, cy + 10 * k, 8 * k, 0, 7); }
+  else if (look === 'heat') { g.arc(cx + 18 * k, cy - 22 * k, 7 * k, 0, 7); }
+  else if (look === 'animal') { g.ellipse(cx, cy, 20 * k, 9 * k, 0, 0, 7); g.moveTo(cx + 26 * k, cy - 6 * k); g.arc(cx + 22 * k, cy - 8 * k, 6 * k, 0, 7); g.rect(cx - 14 * k, cy + 6 * k, 4 * k, 12 * k); g.rect(cx + 10 * k, cy + 6 * k, 4 * k, 12 * k); }
+  else if (look === 'debris') { g.moveTo(cx - 40 * k, cy + 16 * k); g.lineTo(cx - 24 * k, cy - 6 * k); g.lineTo(cx - 6 * k, cy + 2 * k); g.lineTo(cx + 10 * k, cy - 14 * k); g.lineTo(cx + 36 * k, cy + 16 * k); g.closePath(); }
+  else if (look === 'metal') { g.rect(cx - 46 * k, cy - 20 * k, 92 * k, 10 * k); }
+  else { for (var i = 0; i < 5; i++) { var x = cx + (r() - 0.5) * 40 * k, y = cy + (r() - 0.5) * 24 * k; g.moveTo(x + 10 * k, y); g.arc(x, y, (5 + r() * 8) * k, 0, 7); } }
+  g.fill();
+}
+function sensorView(cvs, o) {
+  var g = cvs.getContext('2d'), w = cvs.width, h = cvs.height, r = vrng(o.seed || 7), m = C.WEATHER[o.weather].m[o.sensor], blind = m < 0.3;
+  var q = Math.max(0.08, Math.min(1, (o.conf || 60) / 100)), cx = w * 0.55, cy = h * 0.62, k = h / 170, look = o.look || 'unclear';
+  g.save(); g.clearRect(0, 0, w, h);
+  if (o.sensor === 'camera') {
+    var sky = g.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#9cc3e6'); sky.addColorStop(0.55, '#dfe9f1'); sky.addColorStop(0.56, '#a49a7a'); sky.addColorStop(1, '#7d7458'); g.fillStyle = sky; g.fillRect(0, 0, w, h);
+    if (look === 'heat' || look === 'metal') { g.fillStyle = '#6b5b6e'; g.fillRect(cx - 70 * k, cy - 20 * k, 140 * k, 60 * k); }
+    g.fillStyle = 'rgba(40,40,40,' + (0.25 + 0.75 * q) + ')'; if (look === 'metal') g.fillStyle = 'rgba(255,255,255,' + (0.5 + 0.5 * q) + ')'; shape(g, look, cx, cy, k, r);
+    if (o.weather === 'rain') { g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1; for (var i = 0; i < 160; i++) { var x = r() * w, y = r() * h; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 4, y + 12); g.stroke(); } g.fillStyle = 'rgba(120,130,140,.35)'; g.fillRect(0, 0, w, h); }
+    if (o.weather === 'dust') { g.fillStyle = 'rgba(170,140,95,.86)'; g.fillRect(0, 0, w, h); }
+    if (o.weather === 'night') { g.fillStyle = 'rgba(0,0,8,.9)'; g.fillRect(0, 0, w, h); for (var j = 0; j < 900; j++) { g.fillStyle = 'rgba(255,255,255,' + r() * 0.18 + ')'; g.fillRect(r() * w, r() * h, 1.5, 1.5); } }
+  } else if (o.sensor === 'thermal') {
+    g.fillStyle = o.weather === 'heat' ? '#8a5a6a' : '#140a2a'; g.fillRect(0, 0, w, h);
+    if (o.weather === 'heat') { for (var a = 0; a < 40; a++) { g.fillStyle = 'rgba(255,180,90,' + r() * 0.35 + ')'; g.beginPath(); g.arc(r() * w, r() * h, 8 + r() * 30, 0, 7); g.fill(); } }
+    var cool = look === 'debris' || look === 'metal';
+    var hot = g.createRadialGradient(cx, cy - 10 * k, 2, cx, cy - 10 * k, 60 * k); hot.addColorStop(0, cool ? '#3a3a70' : 'rgba(255,245,160,' + q + ')'); hot.addColorStop(1, cool ? '#26264f' : 'rgba(255,80,0,' + (0.4 + 0.5 * q) + ')');
+    g.fillStyle = hot; g.shadowColor = cool ? 'transparent' : '#ff9a00'; g.shadowBlur = 14 * q; shape(g, look, cx, cy, k, r); g.shadowBlur = 0;
+    if (o.weather === 'rain' || o.weather === 'dust') { g.fillStyle = 'rgba(70,50,90,.55)'; g.fillRect(0, 0, w, h); }
+  } else if (o.sensor === 'lidar') {
+    g.fillStyle = '#05080c'; g.fillRect(0, 0, w, h);
+    var off = document.createElement('canvas'); off.width = w; off.height = h; var og = off.getContext('2d'); og.fillStyle = '#fff'; shape(og, look, cx, cy, k, r); og.fillRect(0, cy + 18 * k, w, 3);
+    var data = og.getImageData(0, 0, w, h).data, step = Math.max(3, Math.round(5 / q));
+    g.fillStyle = '#4fe3ff';
+    if (!blind) for (var y = 0; y < h; y += step) for (var x = (y / step % 2) * step / 2; x < w; x += step) if (data[(y * w + (x | 0)) * 4 + 3] > 0 && r() < 0.35 + 0.6 * m) g.fillRect(x, y, 2, 2);
+    var noise = o.weather === 'rain' ? 380 : o.weather === 'dust' ? 900 : 25; for (var n = 0; n < noise; n++) { g.fillStyle = 'rgba(79,227,255,' + (0.3 + r() * 0.5) + ')'; g.fillRect(r() * w, r() * h * 0.9, 2, 2); }
+  } else if (o.sensor === 'radar') {
+    g.fillStyle = '#020d05'; g.fillRect(0, 0, w, h);
+    var R = h * 0.44, ox = h * 0.5, oy = h * 0.5; g.strokeStyle = 'rgba(80,255,120,.35)'; g.lineWidth = 1;
+    [0.33, 0.66, 1].forEach(function (f) { g.beginPath(); g.arc(ox, oy, R * f, 0, 7); g.stroke(); });
+    g.beginPath(); g.moveTo(ox - R, oy); g.lineTo(ox + R, oy); g.moveTo(ox, oy - R); g.lineTo(ox, oy + R); g.stroke();
+    var ang = r() * 6.28, dist = R * (0.35 + r() * 0.5), bx = ox + Math.cos(ang) * dist, by = oy + Math.sin(ang) * dist, size = (look === 'vehicle' || look === 'metal' ? 9 : look === 'unclear' ? 4 : 5) * (0.6 + q);
+    if (o.moving) for (var t = 1; t < 5; t++) { g.fillStyle = 'rgba(80,255,120,' + (0.35 - t * 0.07) + ')'; g.beginPath(); g.arc(bx - t * 6, by + t * 3, size * 0.8, 0, 7); g.fill(); }
+    g.fillStyle = 'rgba(120,255,150,' + (0.5 + 0.5 * q) + ')'; g.shadowColor = '#5f5'; g.shadowBlur = 10; g.beginPath(); g.arc(bx, by, size, 0, 7); g.fill(); g.shadowBlur = 0;
+    for (var c2 = 0; c2 < 14; c2++) { g.fillStyle = 'rgba(80,255,120,' + r() * 0.4 + ')'; var aa = r() * 6.28, dd = r() * R; g.fillRect(ox + Math.cos(aa) * dd, oy + Math.sin(aa) * dd, 2, 2); }
+    var sw = g.createLinearGradient(ox, oy, ox + R, oy); g.strokeStyle = 'rgba(120,255,150,.8)'; g.lineWidth = 2; g.beginPath(); g.moveTo(ox, oy); g.lineTo(ox + Math.cos(ang + 0.3) * R, oy + Math.sin(ang + 0.3) * R); g.stroke(); void sw;
+    g.fillStyle = 'rgba(120,255,150,.9)'; g.font = (12 * k) + 'px Arial'; g.fillText('echo at ~' + Math.round(dist / R * 120) + ' m', h + 10, oy);
+  } else {
+    g.fillStyle = '#10101a'; g.fillRect(0, 0, w, h);
+    var mid = h * 0.5, noiseA = o.weather === 'rain' ? 0.9 : o.weather === 'night' ? 0.15 : 0.3, sig = blind ? 0.05 : q;
+    g.strokeStyle = '#ffd34d'; g.lineWidth = 1.5; g.beginPath();
+    for (var xx = 0; xx < w * 0.68; xx++) { var burst = (look === 'vehicle' ? Math.sin(xx * 0.9) : (Math.floor(xx / 14) % 3 === 0 ? Math.sin(xx * 0.5) : 0)) * sig * h * 0.32; var yv = mid + burst + (r() - 0.5) * noiseA * h * 0.4; if (xx) g.lineTo(xx, yv); else g.moveTo(xx, yv); }
+    g.stroke();
+    var px = w * 0.84, py = mid, rr = h * 0.3, br = r() * 6.28; g.strokeStyle = '#666'; g.beginPath(); g.arc(px, py, rr, 0, 7); g.stroke();
+    g.fillStyle = 'rgba(255,211,77,.45)'; g.beginPath(); g.moveTo(px, py); g.arc(px, py, rr, br - 0.45, br + 0.45); g.closePath(); g.fill();
+    g.fillStyle = '#ccc'; g.font = (11 * k) + 'px Arial'; g.fillText('direction', px - rr * 0.6, py + rr + 14 * k);
+  }
+  if (blind) { g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, h - 30 * k, w, 30 * k); g.fillStyle = '#fff'; g.font = 'bold ' + (13 * k) + 'px Arial'; g.fillText('Blinded by ' + C.WEATHER[o.weather].label.toLowerCase(), 8, h - 10 * k); }
+  g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, 0, w, 22 * k); g.fillStyle = '#fff'; g.font = 'bold ' + (12 * k) + 'px Arial';
+  g.fillText(C.SENSORS[o.sensor].name + ' · ' + C.WEATHER[o.weather].label + (o.conf != null ? ' · ' + o.conf + '%' : ''), 8, 15 * k);
+  g.restore();
+}
+var PREVIEW_T = [['person', 'Person'], ['vehicle', 'Vehicle'], ['heat', 'Hot roof vent (false)'], ['animal', 'Animal (false)'], ['debris', 'Debris pile (false)'], ['metal', 'Metal roof (false)']];
+function previewConf(sensor, look, w) { var real = look === 'person' || look === 'vehicle', b = real ? C.DET[sensor][look] : C.CLUT[look][sensor]; return Math.round(100 * Math.min(0.95, (real ? 0.3 : 0.2) + 0.6 * b * C.WEATHER[w].m[sensor])); }
+function drawPreviews() {
+  ['pv1', 'pv2'].forEach(function (id) {
+    var cv2 = $(id); if (!cv2) return; var sensor = cv2.getAttribute('data-sensor'); if (!sensor) return;
+    var look = U.pvLook || 'person', w = U.pvWx || 'clear', real = look === 'person' || look === 'vehicle';
+    sensorView(cv2, { sensor: sensor, weather: w, look: real ? look : (C.CLUT[look][sensor] >= 0.3 ? look : look), conf: previewConf(sensor, look, w), seed: 11, moving: look === 'vehicle' || look === 'animal' });
+  });
+}
+function drawMissionView() {
+  var cv2 = $('sv'); if (!cv2 || !U.sim) return; var S = U.sim, q = C.queue(S), r = null;
+  if (U.hover != null) r = S.reports.filter(function (x) { return x.id === U.hover; })[0];
+  if (!r) r = q[0];
+  var key = r ? r.id + '|' + r.status : 'none'; if (key === lastView) return; lastView = key;
+  if (!r) { var g = cv2.getContext('2d'); g.fillStyle = '#1a1a1a'; g.fillRect(0, 0, cv2.width, cv2.height); g.fillStyle = '#aaa'; g.font = '16px Arial'; g.fillText('No report selected', 20, cv2.height / 2); $('svCap').textContent = ''; return; }
+  sensorView(cv2, { sensor: r.sensor, weather: r.wx || S.weather, look: r.look, conf: r.conf, seed: r.id * 977, moving: r.moving });
+  $('svCap').textContent = 'Report ' + r.id + ' from the ' + C.ASSETS[r.asset].name.toLowerCase() + '. ' + CAPTION[r.sensor];
+}
+var lastView = '';
+
+/* ---------- header ---------- */
+function renderHeader() {
+  $('groupName').value = U.group;
+  $('roundLabel').innerHTML = 'Round <select id="roundSel">' + [1, 2, 3].map(function (r) { return '<option' + (r === U.round ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select> · ' + esc(C.WEATHER[spec().weather].label);
+  $('phases').innerHTML = PHASES.map(function (p) { return '<span class="phase' + (p[0] === U.phase ? ' on' : '') + '">' + p[1] + '</span>'; }).join('');
+  $('roundSel').disabled = U.phase === 'mission';
+  $('roundSel').onchange = function (e) { U.round = +e.target.value; U.phase = 'setup'; U.sim = null; U.running = false; save(); render(); };
+  document.body.classList.toggle('big', !!U.big);
+}
+
+/* ---------- side panels ---------- */
+function opt(list, val) { return list.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (String(o[0]) === String(val) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join(''); }
+function sensorOpts(val, none) { return (none ? '<option value="">none</option>' : '') + opt(Object.keys(C.SENSORS).map(function (k) { return [k, C.SENSORS[k].name + ' (weight ' + C.SENSORS[k].cost + ')']; }), val); }
+function vendorTable(keys) {
+  var ws = Object.keys(C.WEATHER);
+  return '<table><tr><th>Sensor</th><th>Vendor score</th>' + ws.map(function (w) { return '<th>' + esc(C.WEATHER[w].label) + '</th>'; }).join('') + '</tr>' +
+    keys.filter(Boolean).map(function (k) { return '<tr><td>' + esc(C.SENSORS[k].name) + '</td><td>' + C.SENSORS[k].vendor.toFixed(1) + ' / 5</td>' + ws.map(function (w) { var r = C.rating(C.WEATHER[w].m[k]); return '<td style="background:' + (r === 'good' ? '#F6ECF5' : r === 'weak' ? '#FFDBC4' : '#45004D;color:#fff') + '">' + r + '</td>'; }).join('') + '</tr>'; }).join('') + '</table>';
+}
+function assetPanel(k) {
+  var a = U.cfg[k], dis = locked() ? ' disabled' : '', pay = C.payloadOf(a), z = U.cfg.command.zones[k];
+  var h = '<div class="card"><h3>' + C.ASSETS[k].name + ' <span class="pill">zone ' + C.ZONES[z].name + ' (set by commander)</span></h3>';
+  h += '<label class="row">Preset <select data-k="' + k + '" data-f="preset">' + opt(Object.keys(C.PRESETS[k]).map(function (p) { return [p, p + ': ' + C.PRESETS[k][p].label]; }).concat(locked() ? [] : [['custom', 'Custom']]), a.preset || 'custom') + '</select></label>';
+  h += '<label class="row">Primary sensor <select data-k="' + k + '" data-f="primary"' + dis + '>' + sensorOpts(a.primary) + '</select></label>';
+  h += '<label class="row">Fallback sensor <select data-k="' + k + '" data-f="fallback"' + dis + '>' + sensorOpts(a.fallback, true) + '</select></label>';
+  h += '<div class="note">Payload ' + pay + ' of ' + C.PAYLOAD + '. The fallback only works when the primary fails or is blinded.</div><div class="bar' + (pay > C.PAYLOAD ? ' red' : '') + '"><i style="width:' + Math.min(100, pay / C.PAYLOAD * 100) + '%"></i></div>';
+  if (k !== 'mast') {
+    h += '<label class="row"><b>Patrol route</b> <select data-k="' + k + '" data-f="route">' + opt(C.ROUTES[k].concat([['custom', 'Custom (drawn on the map)']]), a.route || 'custom') + '</select></label>';
+    h += '<label class="row">Speed <select data-k="' + k + '" data-f="speed"' + dis + '>' + opt([['slow', 'Slow (sees more)'], ['normal', 'Normal'], ['fast', 'Fast (covers more)']], a.speed) + '</select></label>';
+    h += '<label class="row">On detection <select data-k="' + k + '" data-f="onDet"' + dis + '>' + opt([['carry', 'Carry on'], ['once', 'Revisit once'], ['three', 'Revisit three times'], ['orbit', 'Abandon pattern and orbit']], a.onDet) + '</select></label>';
+    if (k === 'drone') h += '<label class="row">Altitude <select data-k="' + k + '" data-f="alt"' + dis + '>' + opt([['low', 'Low (sharper, blocked by buildings)'], ['high', 'High (sees over, less sharp)']], a.alt) + '</select></label>';
+    h += '<label class="row">If position is lost <select data-k="' + k + '" data-f="lostRule"' + dis + '>' + opt([['carry', 'Carry on and guess'], ['stop', 'Stop where it is'], ['return', 'Go back to start']], a.lostRule || 'carry') + '</select></label>';
+    var L = k === 'ground' ? Math.max(0, C.groundRoute(C.WORLD.brief, a.path || []).cells.length - 1) : C.pathLength(a.path || [], true), sp = C.ASSETS[k].speeds[a.speed], lap = L / sp;
+    h += '<div>Patrol path: <b>' + (a.path || []).length + '</b> points · ' + Math.round(L * C.CELL_M) + ' m · lap ' + Math.round(lap) + ' s</div>';
+    if (k === 'drone') { var en = C.droneEndurance(a), len = spec().length; h += '<div>Endurance ' + en + ' s for a ' + len + ' s mission</div><div class="bar' + (en < len ? ' red' : '') + '"><i style="width:' + Math.min(100, en / len * 100) + '%"></i></div>' + (en < len ? '<div class="warn">The drone will land before the end. Lighter sensors or a slower speed help.</div>' : ''); }
+    if (k === 'ground') { var gr = C.groundRoute(C.WORLD.brief, a.path || []); if (gr.blocked) h += '<div class="warn">No road connects these points on the briefing map.</div>'; h += '<div class="note">The ground robot can only drive on roads. Clicks snap to the nearest road in its zone.</div>'; }
+    h += '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button data-act="undo" data-k="' + k + '">Remove last point</button><button data-act="clear" data-k="' + k + '">Clear path</button></div><div class="note">Pick a route above, or draw your own: click the map to add a point, drag a point to move it, click a point to remove it.</div>';
+  } else {
+    var ridge = a.pos && C.WORLD.brief[C.idx(a.pos[0], a.pos[1])] === T.RIDGE;
+    h += '<label class="row"><b>Position</b> <select data-k="mast" data-f="route">' + opt(C.ROUTES.mast.concat([['custom', 'Custom (clicked on the map)']]), a.route || 'custom') + '</select></label>';
+    h += '<div>Position: <b>' + (a.pos ? C.square(a.pos[0], a.pos[1]) : 'not placed') + '</b>' + (ridge ? ' · on the ridge (sees over it)' : '') + '</div>';
+    h += '<div class="note">Pick a position above, or click on the map inside its zone. It cannot stand on buildings or water.</div>';
+  }
+  h += '</div><div class="card"><h3>What your sensors actually see</h3><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"><select id="pvLook">' + opt(PREVIEW_T, U.pvLook || 'person') + '</select><select id="pvWx">' + opt(Object.keys(C.WEATHER).map(function (x) { return [x, C.WEATHER[x].label]; }), U.pvWx || 'clear') + '</select></div>' +
+    (a.primary ? '<canvas id="pv1" data-sensor="' + a.primary + '" width="400" height="170" style="width:100%;border-radius:6px"></canvas><div class="note">Primary: ' + esc(CAPTION[a.primary]) + '</div>' : '') +
+    (a.fallback ? '<canvas id="pv2" data-sensor="' + a.fallback + '" width="400" height="170" style="width:100%;border-radius:6px;margin-top:6px"></canvas><div class="note">Fallback: ' + esc(CAPTION[a.fallback]) + '</div>' : '') +
+    '<div class="note">This is all the robot gets. A person has to decide what it means.</div>';
+  h += '</div><div class="card"><h3>Vendor cards</h3><div class="note">One overall score hides the conditions in which a sensor fails.</div>' + vendorTable([a.primary, a.fallback]) + '</div>';
+  return h;
+}
+function operatorPanel() {
+  var o = U.cfg.operator, dis = locked() ? ' disabled' : '';
+  return '<div class="card"><h3>Operator station</h3>' +
+    '<label class="row">Queue order <select data-k="operator" data-f="order"' + dis + '>' + opt([['oldest', 'Oldest first'], ['confidence', 'Highest confidence first'], ['newest', 'Newest first']], o.order) + '</select></label>' +
+    '<label class="row">Hide reports below <select data-k="operator" data-f="filter"' + dis + '>' + opt([[0, 'show everything'], [35, '35% confidence'], [50, '50% confidence']], o.filter) + '</select></label>' +
+    '<label class="row">Report expires after <select data-k="operator" data-f="expiry"' + dis + '>' + opt([[14, '14 s'], [22, '22 s'], [35, '35 s']], o.expiry) + '</select></label>' +
+    '<div class="note">During the mission you confirm or reject each report by hand. Reports you do not answer in time expire and cost points. Hidden reports are never seen.</div></div>' +
+    '<div class="card"><h3>Before you confirm: four checks</h3><ol class="checks"><li><b>What did it see?</b> Does the description fit a real target?</li><li><b>Does another sensor agree?</b> Two different sensors near the same place is much stronger evidence.</li><li><b>Does it make sense there?</b> A vehicle in the marsh or a hot spot on a roof is suspicious.</li><li><b>Can this sensor be trusted right now?</b> Camera at night, thermal at midday, acoustic in rain: weak.</li></ol><div class="note">Confidence is the robot\'s own guess: use it to sort, not to decide. Confirming a false contact costs 20 points, letting a report expire costs 4, rejecting costs nothing, but a real contact nobody confirms earns nothing.</div></div>';
+}
+function commandPanel() {
+  var c = U.cfg.command, dis = locked() ? ' disabled' : '', used = {}; KINDS.forEach(function (k) { used[c.zones[k]] = 1; });
+  var dark = C.ZONES.filter(function (z) { return !used[z.id]; }).map(function (z) { return z.name; });
+  var h = '<div class="card"><h3>Command element</h3><div class="note">Everything you want must be set now. You cannot talk to the robots during the mission.</div>';
+  KINDS.forEach(function (k) { h += '<label class="row">' + C.ASSETS[k].name + ' patrols <select data-k="zone" data-f="' + k + '"' + dis + '>' + opt(C.ZONES.map(function (z) { return [z.id, 'zone ' + z.name]; }), c.zones[k]) + '</select></label>'; });
+  h += '<div class="' + (dark.length ? 'warn' : '') + '">' + (dark.length ? 'Unwatched: ' + dark.join(', ') : 'Every zone has an asset') + '</div>';
+  h += '<label class="row">Report only above <select data-k="command" data-f="threshold"' + dis + '>' + opt([[30, '30% confidence'], [50, '50% confidence'], [70, '70% confidence']], c.threshold) + '</select></label>';
+  h += '<label class="row">Reporting interval <select data-k="command" data-f="interval"' + dis + '>' + opt([[0, 'Immediately'], [10, 'Every 10 s (bundled)'], [20, 'Every 20 s (bundled)']], c.interval) + '</select></label>';
+  h += '<label class="row">Comms budget per asset <select data-k="command" data-f="budget"' + dis + '>' + opt([[4, '4 reports a minute'], [8, '8 reports a minute'], [12, '12 reports a minute']], c.budget) + '</select></label>';
+  h += '<label class="row">Assets may break patrol to re-check <select data-k="command" data-f="revisit"' + dis + '>' + opt([['true', 'Yes'], ['false', 'No']], String(c.revisit)) + '</select></label>';
+  return h + '<div class="note">Reports over the budget are dropped before anyone sees them.</div></div>';
+}
+function setupSide() {
+  var tabs = [['drone', 'Drone'], ['ground', 'Ground robot'], ['mast', 'Mast'], ['operator', 'Operator'], ['command', 'Command']];
+  var h = '<div class="tabs">' + tabs.map(function (t) { return '<button class="tab' + (U.sideTab === t[0] ? ' on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
+  if (locked()) h += '<div class="card"><b>Round 1: presets only.</b> Choose a preset and a patrol route for each asset. Sensors, speed and the other settings unlock in Round 2.</div>';
+  h += U.sideTab === 'operator' ? operatorPanel() : U.sideTab === 'command' ? commandPanel() : assetPanel(U.sideTab);
+  var s = spec(); h += '<div class="card"><h3>This round</h3>Weather at the start: <b>' + esc(C.WEATHER[s.weather].label) + '</b> · mission ' + s.length + ' s' + (s.injects.length ? '<br><span class="note">Expect disruptions. You will only learn about them from the mission log.</span>' : '') + '</div>';
+  h += '<button class="primary" id="btnFreeze" style="width:100%;padding:12px">Freeze settings and go to the mission</button>';
+  return h;
+}
+var TERR = ['open ground', 'in the built-up area', 'in the trees', 'on the ridge', 'on the road', 'in the marsh', 'in water'];
+function placeText(x, y) {
+  var xi = Math.floor(x), yi = Math.floor(y), v = C.WORLD.brief[C.idx(xi, yi)];
+  if (v === T.OPEN) { for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) if (C.inb(xi + dx, yi + dy) && C.WORLD.brief[C.idx(xi + dx, yi + dy)] === T.BUILD) return 'next to buildings'; }
+  return TERR[v];
+}
+function evidence(S, r) {
+  var others = S.reports.filter(function (o) { return o.id !== r.id && Math.abs(o.tArr - r.tArr) <= 40 && Math.hypot(o.x - r.x, o.y - r.y) <= 3; });
+  var diff = {}, same = 0;
+  others.forEach(function (o) { if (o.asset === r.asset && o.sensor === r.sensor) same++; else diff[C.ASSETS[o.asset].name + ' ' + C.SENSORS[o.sensor].name.toLowerCase()] = 1; });
+  var names = Object.keys(diff), rate = C.rating(C.WEATHER[r.wx || S.weather].m[r.sensor]);
+  var h = names.length ? '<span class="chip good">Also seen by: ' + esc(names.join(', ')) + '</span>' : '<span class="chip">No other sensor nearby</span>';
+  if (same) h += '<span class="chip">Repeated ' + (same + 1) + '× here</span>';
+  h += '<span class="chip ' + (rate === 'good' ? 'good' : rate === 'weak' ? 'mid' : 'bad') + '">' + esc(C.SENSORS[r.sensor].name) + ' in ' + esc(C.WEATHER[r.wx || S.weather].label.toLowerCase()) + ': ' + rate + '</span>';
+  return h;
+}
+function repCard(S, r) {
+  var left = Math.max(0, r.exp - S.t), frac = left / S.cfg.operator.expiry;
+  return '<div class="rep' + (r.conf < 50 ? ' low' : '') + '" data-hover="' + r.id + '" data-card="' + r.id + '"><div class="top"><span>' + esc(C.ASSETS[r.asset].name) + ' · ' + esc(C.SENSORS[r.sensor].name) + '</span><span>' + r.conf + '%</span></div>' +
+    '<div>Saw: <span class="saw">' + esc(r.desc || 'unclear') + '</span> · square <b>' + esc(r.square) + '</b>, ' + esc(placeText(r.x, r.y)) + '</div>' +
+    '<div class="ev">' + evidence(S, r) + '</div>' +
+    '<div class="note"><span class="left">' + Math.ceil(left) + ' s left</span></div><div class="bar' + (frac < 0.3 ? ' red' : '') + '"><i style="width:' + (frac * 100) + '%"></i></div>' +
+    '<div class="btns"><button class="confirm" data-dec="confirmed" data-id="' + r.id + '">Confirm</button><button class="reject" data-dec="rejected" data-id="' + r.id + '">Reject</button></div></div>';
+}
+function missionSide() {
+  return '<div class="card mbar"><div><div class="clock" id="mClock"></div><div class="note" id="mWx"></div></div><div class="ctrl">' +
+    '<button class="primary big" id="btnRun"></button><button class="primary big" id="btnToGap" style="display:none">Go to the gap</button>' +
+    '<span class="seg" id="speedSeg">' + [1, 2, 4].map(function (v) { return '<button data-speed="' + v + '">' + v + '×</button>'; }).join('') + '</span></div></div>' +
+    '<div class="kpis" style="margin-bottom:10px"><div class="kpi"><b id="kWait">0</b>waiting</div><div class="kpi"><b id="kExp">0</b>expired</div><div class="kpi"><b id="kConf">0</b>confirmed</div></div>' +
+    '<div class="card"><h3>Sensor view</h3><canvas id="sv" width="420" height="190" style="width:100%;border-radius:6px;display:block"></canvas><div class="note" id="svCap"></div><div class="note">Point at a report to see what its sensor returned.</div></div>' +
+    '<div class="card"><h3>Operator queue</h3><div id="queue"></div><div class="note" id="qMore"></div></div>' +
+    '<div class="card"><h3>Mission log</h3><div id="log"></div></div>';
+}
+var lastQ = '', lastLog = -1;
+function updateMission() {
+  var S = U.sim; if (!S || U.phase !== 'mission' || !$('mClock')) return;
+  $('mClock').textContent = mmss(S.t) + ' / ' + mmss(S.spec.length);
+  $('mWx').innerHTML = esc(C.WEATHER[S.weather].label) + (S.commsDown ? ' · <span class="warn">comms down</span>' : '');
+  $('btnRun').style.display = S.done ? 'none' : ''; $('btnToGap').style.display = S.done ? '' : 'none';
+  $('btnRun').textContent = U.running ? 'Pause' : S.t ? 'Resume' : 'Start mission';
+  Array.prototype.forEach.call(document.querySelectorAll('[data-speed]'), function (b) { b.classList.toggle('on', +b.getAttribute('data-speed') === U.speed); });
+  var q = C.queue(S), exp = 0, conf = 0; S.reports.forEach(function (r) { if (r.status === 'expired') exp++; if (r.status === 'confirmed') conf++; });
+  $('kWait').textContent = q.length; $('kExp').textContent = exp; $('kConf').textContent = conf;
+  var top = q.slice(0, 5), key = top.map(function (r) { return r.id; }).join(',') + '|' + S.reports.length;
+  if (key !== lastQ) { $('queue').innerHTML = top.length ? top.map(function (r) { return repCard(S, r); }).join('') : '<div class="note">No reports waiting.</div>'; lastQ = key; }
+  else top.forEach(function (r) {
+    var el = document.querySelector('[data-card="' + r.id + '"]'); if (!el) return;
+    var left = Math.max(0, r.exp - S.t), frac = left / S.cfg.operator.expiry, bar = el.querySelector('.bar');
+    el.querySelector('.left').textContent = Math.ceil(left) + ' s left'; bar.classList.toggle('red', frac < 0.3); bar.firstChild.style.width = (frac * 100) + '%';
+  });
+  $('qMore').textContent = q.length > 5 ? '+ ' + (q.length - 5) + ' more waiting' : '';
+  drawMissionView();
+  if (S.events.length !== lastLog) { $('log').innerHTML = S.events.slice().reverse().map(function (e) { return '<div' + (e.kind === 'warn' ? ' class="warn"' : '') + '>' + mmss(e.t) + ' ' + esc(e.text) + '</div>'; }).join(''); lastLog = S.events.length; }
+}
+function truthOf(r) { return !r.real ? 'False' : Math.hypot(r.x - r.tx, r.y - r.ty) <= 5 ? 'Real' : 'Real, wrong place'; }
+function recordRows(S, truth) { return S.reports.map(function (r) { var row = [mmss(r.tArr), C.ASSETS[r.asset].name, C.SENSORS[r.sensor].name, r.desc || '', r.square, r.conf + '%', { confirmed: 'Confirmed', rejected: 'Rejected', expired: 'Expired', filtered: 'Hidden by filter', open: 'Open' }[r.status]]; if (truth) row.push(truthOf(r)); return row; }); }
+function recordTable(S, truth) { return '<table><tr><th>Arrived</th><th>Robot</th><th>Sensor</th><th>Saw</th><th>Square</th><th>Conf.</th><th>Decision</th>' + (truth ? '<th>Truth</th>' : '') + '</tr>' + recordRows(S, truth).map(function (r) { return '<tr>' + r.map(function (c) { return '<td>' + esc(c) + '</td>'; }).join('') + '</tr>'; }).join('') + '</table>'; }
+function gapSide() {
+  var S = U.sim, tabs = [['record', 'Mission record'], ['op', 'Operator report'], ['dir', 'Directions'], ['map', 'Correct the map'], ['work', 'Workload']];
+  var h = '<div class="tabs">' + tabs.map(function (t) { return '<button class="tab' + (U.gapTab === t[0] ? ' on' : '') + '" data-gtab="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
+  if (U.gapTab === 'record') h += '<div class="card"><h3>Mission record</h3><div class="note">One line per report, in order of arrival. No map, no ground truth.</div><div style="display:flex;gap:6px;margin:6px 0"><button data-act="printRecord">Print</button><button data-act="csv">Download CSV</button></div><div style="max-height:420px;overflow:auto">' + recordTable(S) + '</div></div>';
+  if (U.gapTab === 'op') h += '<div class="card"><h3>Operator report for the commander</h3><div class="note">Half a page at most. What is out there, and how far can the commander trust it?</div><textarea data-text="op" rows="10">' + esc(U.texts.op) + '</textarea></div>';
+  if (U.gapTab === 'dir') { h += '<div class="card"><h3>Command directions</h3><div class="note">One written direction per asset team for the next round.</div>'; KINDS.forEach(function (k) { h += '<label>' + C.ASSETS[k].name + '</label><textarea data-text="dir.' + k + '" rows="3">' + esc(U.texts.dir[k]) + '</textarea>'; }); h += '<button data-act="printDir">Print directions</button></div>'; }
+  if (U.gapTab === 'map') {
+    h += '<div class="card"><h3>Correct the briefing map</h3><div class="note">Compare the briefing map with the unit\'s map (switch below the map). Click the map to mark a place where the briefing map is wrong.</div>' +
+      '<label class="row">Marker type <select id="corrType">' + opt([['demolished', 'Shown on map, not there'], ['unmapped', 'There, but missing from map'], ['flooded', 'Road not passable'], ['other', 'Other']], U.corrType) + '</select></label>';
+    h += U.corrections.length ? '<table><tr><th>#</th><th>Square</th><th>Type</th><th></th></tr>' + U.corrections.map(function (m, i) { return '<tr><td>' + (i + 1) + '</td><td>' + C.square(m.x, m.y) + '</td><td>' + esc(m.type) + '</td><td><button data-act="delCorr" data-i="' + i + '">Remove</button></td></tr>'; }).join('') + '</table>' : '<div class="note">No markers yet.</div>';
+    h += '</div>';
+  }
+  if (U.gapTab === 'work') {
+    var labels = ['How hard did you have to think?', 'How rushed did you feel?', 'How frustrated were you?'];
+    h += '<div class="card"><h3>Operator workload (1 = low, 5 = high)</h3>' + labels.map(function (l, i) { return '<label class="row">' + l + ' <input type="range" min="1" max="5" step="1" value="' + U.workload[i] + '" data-work="' + i + '"> <b>' + U.workload[i] + '</b></label>'; }).join('') + '</div>';
+  }
+  h += '<button class="primary" id="btnDebrief" style="width:100%;padding:12px">Go to the debrief (reveals the truth)</button>';
+  return h;
+}
+function resultCode(sc) {
+  var o = { v: 1, g: U.group, r: U.round, s: U.sim.spec.seed, t: sc.total, f: sc.found, fc: sc.falseConf, e: sc.expired, a: sc.area, d: sc.dropped, w: U.workload };
+  var j = JSON.stringify(o), b = btoa(unescape(encodeURIComponent(j)));
+  return 'PU1.' + b + '.' + (C.hashStr(j) % 10000);
+}
+function debriefSide() {
+  var S = U.sim, sc = C.score(S), P = sc.pts;
+  var rows = [['Real contacts found and confirmed', sc.found + ' of 6', P.found], ['False contacts confirmed', sc.falseConf + (sc.misplaced ? ' (' + sc.misplaced + ' misplaced)' : ''), P.falseConf], ['Reports that expired unseen', sc.expired, P.expired],
+    ['Area kept under watch (seen in the last minute)', sc.area + '%', P.area], ['Time to first confirmation', sc.tFirst == null ? 'none' : mmss(sc.tFirst), P.first], ['Reports lost to the comms budget', sc.dropped, P.dropped]];
+  var h = '<div class="card"><h3>Scoreboard · ' + esc(U.group) + ' · round ' + U.round + '</h3><table class="score"><tr><th>What counts</th><th>Result</th><th>Points</th></tr>' +
+    rows.map(function (r) { return '<tr><td>' + r[0] + '</td><td>' + esc(r[1]) + '</td><td>' + (r[2] > 0 ? '+' : '') + r[2] + '</td></tr>'; }).join('') + '<tr class="total"><td>Total</td><td></td><td>' + sc.total + '</td></tr></table></div>';
+  h += '<div class="card"><h3>Each asset</h3><table><tr><th>Asset</th><th>Area seen at least once</th><th>Real contacts detected</th><th>Reports sent</th><th>False reports</th></tr>' + KINDS.map(function (k) { var a = sc.perAsset[k]; return '<tr><td>' + C.ASSETS[k].name + '</td><td>' + a.area + '%</td><td>' + a.realDetected + '</td><td>' + a.reports + '</td><td>' + a.falseSent + '</td></tr>'; }).join('') + '</table></div>';
+  var found = U.corrections.length ? C.WORLD.errors.filter(function (e) { return U.corrections.some(function (m) { return m.x >= e.x - 3 && m.x < e.x + e.w + 3 && m.y >= e.y - 3 && m.y < e.y + e.h + 3; }); }).length : 0;
+  h += '<div class="card"><h3>Operator workload</h3><div class="kpis"><div class="kpi"><b>' + sc.workload.expired + '</b>expired</div><div class="kpi"><b>' + sc.workload.meanDecision + ' s</b>mean decision time</div><div class="kpi"><b>' + sc.workload.maxQueue + '</b>longest queue</div></div><div class="note" style="margin-top:6px">Self-rating (think / rushed / frustrated): ' + U.workload.join(' / ') + ' · reports hidden by filter: ' + sc.workload.filtered + '</div></div>';
+  var dc = { ok: 0, bad: 0, rejOk: 0, rejReal: 0, expReal: 0 };
+  S.reports.forEach(function (r) { var good = truthOf(r) === 'Real'; if (r.status === 'confirmed') { if (good) dc.ok++; else dc.bad++; } else if (r.status === 'rejected') { if (good) dc.rejReal++; else dc.rejOk++; } else if (r.status === 'expired' && good) dc.expReal++; });
+  h += '<div class="card"><h3>Operator decisions</h3><table><tr><td>Confirmed and real</td><td><b>' + dc.ok + '</b></td></tr><tr><td>Confirmed but false or misplaced</td><td><b>' + dc.bad + '</b></td></tr><tr><td>Rejected and false</td><td><b>' + dc.rejOk + '</b></td></tr><tr><td>Rejected but real</td><td><b>' + dc.rejReal + '</b></td></tr><tr><td>Real reports left to expire</td><td><b>' + dc.expReal + '</b></td></tr></table>' +
+    '<div style="margin-top:6px"><button data-act="review">Review every report</button></div></div>';
+  h += '<div class="card"><h3>Briefing map</h3>Errors you marked: <b>' + found + ' of 3</b>. Switch the map to <i>Ground truth</i> to see them.</div>';
+  h += '<div class="card"><h3>Result code for the leaderboard</h3><textarea readonly rows="3" id="codeBox">' + resultCode(sc) + '</textarea><div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button data-act="copyCode">Copy code</button><button data-act="pack">Download unit pack</button>' + (U.round < 3 ? '<button class="primary" data-act="next">Next round</button>' : '') + '</div></div>';
+  return h;
+}
+function renderSide() {
+  var el = $('side');
+  el.innerHTML = U.phase === 'setup' ? setupSide() : U.phase === 'mission' ? missionSide() : U.phase === 'gap' ? gapSide() : debriefSide();
+  if (U.phase === 'mission') { lastQ = ''; lastLog = -1; lastView = ''; updateMission(); }
+  if (U.phase === 'setup') drawPreviews();
+  var modes = U.phase === 'setup' ? [] : U.phase === 'debrief' ? [['truth', 'Ground truth'], ['unit', "Unit's map"], ['briefing', 'Briefing map']] : [['briefing', 'Briefing map'], ['unit', "Unit's map"]];
+  var leg = '<div class="legend">' + (U.mapMode === 'unit' ? '<span><i style="background:#9a9a9a"></i>never observed</span><span><i style="background:#f4f4f4"></i>observed, nothing returned</span><span><i style="background:#2b2b2b"></i>observed, something returned</span>'
+    : '<span><i style="background:' + COL.build + '"></i>building</span><span><i style="background:' + COL.trees + '"></i>trees</span><span><i style="background:' + COL.ridge + '"></i>ridge</span><span><i style="background:' + COL.road + '"></i>road (ground robot)</span><span><i style="background:' + COL.marsh + '"></i>marsh</span><span><i style="background:' + COL.water + '"></i>water</span>') +
+    (U.phase === 'setup' ? KINDS.map(function (k) { return '<span><i style="background:' + ACOL[k] + '"></i>' + C.ASSETS[k].name + '</span>'; }).join('') : '') + '</div>';
+  $('mapBar').innerHTML = (modes.length ? '<div class="tabs">' + modes.map(function (m) { return '<button class="tab' + (U.mapMode === m[0] ? ' on' : '') + '" data-map="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div>' : '') + leg;
+}
+function render() { renderHeader(); renderSide(); draw(); }
+
+/* ---------- interactions ---------- */
+function cellFromEvent(e) { var r = cv.getBoundingClientRect(); return [Math.floor((e.clientX - r.left) / r.width * W), Math.floor((e.clientY - r.top) / r.height * H)]; }
+function inZone(k, x, y) { return C.zoneOf(x, y) === U.cfg.command.zones[k]; }
+function placePoint(k, x, y, quiet) {
+  var zname = C.ZONES[U.cfg.command.zones[k]].name;
+  function no(t) { if (!quiet) msg(t, true); return null; }
+  if (!C.inb(x, y)) return null;
+  if (!inZone(k, x, y)) return no(C.ASSETS[k].name + ' is allocated to zone ' + zname + '. Click inside that zone.');
+  if (k === 'mast') { var v = C.WORLD.brief[C.idx(x, y)]; if (v === T.BUILD || v === T.WATER) return no('The mast cannot stand on a building or water.'); return [x, y]; }
+  if (k === 'ground') {
+    var best = null, bd = 1e9; for (var yy = 0; yy < H; yy++) for (var xx = 0; xx < W; xx++) if (C.WORLD.brief[C.idx(xx, yy)] === T.ROAD && inZone(k, xx, yy)) { var d = Math.hypot(xx - x, yy - y); if (d < bd) { bd = d; best = [xx, yy]; } }
+    if (!best || bd > 8) return no('The ground robot can only drive on roads. Click nearer a road in zone ' + zname + '.');
+    return best;
+  }
+  return [x, y];
+}
+var drag = null;
+function setupAsset() { return ['drone', 'ground', 'mast'].indexOf(U.sideTab) >= 0 ? U.sideTab : null; }
+cv.addEventListener('pointerdown', function (e) {
+  if (U.phase !== 'setup') return;
+  var k = setupAsset(); if (!k || k === 'mast') return;
+  var c = cellFromEvent(e), p = U.cfg[k].path || [];
+  for (var i = p.length - 1; i >= 0; i--) if (Math.hypot(p[i][0] - c[0], p[i][1] - c[1]) <= 1.6) { drag = { k: k, i: i, moved: false }; try { cv.setPointerCapture(e.pointerId); } catch (er) { /* ignore */ } e.preventDefault(); return; }
+});
+cv.addEventListener('pointermove', function (e) {
+  if (!drag) return; var c = cellFromEvent(e), pt = placePoint(drag.k, c[0], c[1], true), cur = U.cfg[drag.k].path[drag.i];
+  if (pt && (pt[0] !== cur[0] || pt[1] !== cur[1])) { U.cfg[drag.k].path[drag.i] = pt; drag.moved = true; U.cfg[drag.k].route = 'custom'; draw(); }
+});
+cv.addEventListener('pointerup', function (e) {
+  var c = cellFromEvent(e);
+  if (drag) { var d = drag; drag = null; if (!d.moved) U.cfg[d.k].path.splice(d.i, 1); U.cfg[d.k].route = 'custom'; save(); render(); return; }
+  if (U.phase === 'gap' && U.gapTab === 'map') { if (C.inb(c[0], c[1])) { U.corrections.push({ x: c[0], y: c[1], type: U.corrType }); save(); render(); } return; }
+  if (U.phase !== 'setup') return;
+  var k = setupAsset(); if (!k) { msg('Choose the Drone, Ground robot or Mast tab first, then click the map.'); return; }
+  var pt = placePoint(k, c[0], c[1]); if (!pt) return;
+  if (k === 'mast') U.cfg.mast.pos = pt; else U.cfg[k].path = (U.cfg[k].path || []).concat([pt]);
+  U.cfg[k].route = 'custom'; save(); render();
+});
+cv.addEventListener('contextmenu', function (e) { if (U.phase === 'setup' && U.cfg[U.sideTab] && U.cfg[U.sideTab].path) { e.preventDefault(); U.cfg[U.sideTab].path.pop(); save(); render(); } });
+document.addEventListener('change', function (e) {
+  var t = e.target, k = t.getAttribute('data-k'), f = t.getAttribute('data-f');
+  if (t.id === 'groupName') { U.group = t.value.trim() || 'Group'; save(); return; }
+  if (t.id === 'corrType') { U.corrType = t.value; return; }
+  if (t.id === 'pvLook') { U.pvLook = t.value; drawPreviews(); return; }
+  if (t.id === 'pvWx') { U.pvWx = t.value; drawPreviews(); return; }
+  if (!k) return;
+  if (k === 'zone') { U.cfg.command.zones[f] = +t.value; var a = U.cfg[f]; a.route = f === 'drone' ? 'loop' : f === 'ground' ? 'long' : 'centre'; if (f === 'mast') a.pos = C.routeTemplate('mast', +t.value, 'centre')[0]; else a.path = C.routeTemplate(f, +t.value, a.route); }
+  else if (f === 'route') { var b = U.cfg[k]; b.route = t.value; if (t.value !== 'custom') { var rt = C.routeTemplate(k, U.cfg.command.zones[k], t.value); if (k === 'mast') b.pos = rt[0]; else b.path = rt; } }
+  else if (k === 'command' || k === 'operator') { var v = t.value; U.cfg[k][f] = v === 'true' ? true : v === 'false' ? false : isNaN(+v) ? v : +v; }
+  else if (f === 'preset') { if (t.value !== 'custom') C.applyPreset(U.cfg, k, t.value); else U.cfg[k].preset = 'custom'; }
+  else { U.cfg[k][f] = t.value || null; U.cfg[k].preset = 'custom'; }
+  save(); render();
+});
+document.addEventListener('input', function (e) {
+  var t = e.target, key = t.getAttribute('data-text'), w = t.getAttribute('data-work');
+  if (key) { if (key === 'op') U.texts.op = t.value; else if (key === 'aar') U.texts.aar = t.value; else U.texts.dir[key.split('.')[1]] = t.value; save(); }
+  if (w != null) { U.workload[+w] = +t.value; t.nextElementSibling.textContent = t.value; save(); }
+});
+function doDecide(t) { if (C.decide(U.sim, +t.getAttribute('data-id'), t.getAttribute('data-dec'))) { U.hover = null; lastQ = ''; updateMission(); draw(); } }
+document.addEventListener('pointerdown', function (e) { if (U.phase !== 'mission' || !e.target.closest) return; var t = e.target.closest('[data-dec]'); if (t) { e.preventDefault(); doDecide(t); return; } var c = e.target.closest('[data-hover]'); if (c) { U.hover = +c.getAttribute('data-hover'); draw(); drawMissionView(); } });
+document.addEventListener('mouseover', function (e) { var r = e.target.closest && e.target.closest('[data-hover]'); if (!r) return; var id = +r.getAttribute('data-hover'); if (id !== U.hover) { U.hover = id; draw(); drawMissionView(); } });
+document.addEventListener('click', function (e) {
+  var t = e.target.closest ? e.target.closest('button') : null; if (!t) return;
+  if (t.hasAttribute('data-tab')) { U.sideTab = t.getAttribute('data-tab'); if (KINDS.indexOf(U.sideTab) >= 0) U.sel = U.sideTab; render(); return; }
+  if (t.hasAttribute('data-gtab')) { U.gapTab = t.getAttribute('data-gtab'); if (U.gapTab === 'map') U.mapMode = 'briefing'; render(); return; }
+  if (t.hasAttribute('data-map')) { U.mapMode = t.getAttribute('data-map'); render(); return; }
+  if (t.hasAttribute('data-dec')) { if (e.detail === 0) doDecide(t); return; }
+  if (t.hasAttribute('data-speed')) { U.speed = +t.getAttribute('data-speed'); updateMission(); return; }
+  var act = t.getAttribute('data-act'), k = t.getAttribute('data-k');
+  if (act === 'undo') { (U.cfg[k].path || []).pop(); U.cfg[k].route = 'custom'; save(); render(); }
+  if (act === 'clear') { U.cfg[k].path = []; U.cfg[k].route = 'custom'; save(); render(); }
+  if (act === 'delCorr') { U.corrections.splice(+t.getAttribute('data-i'), 1); save(); render(); }
+  if (act === 'printRecord') printHTML('<h2>Mission record · ' + esc(U.group) + ' · round ' + U.round + '</h2>' + recordTable(U.sim));
+  if (act === 'printDir') printHTML('<h2>Command directions · ' + esc(U.group) + ' · round ' + U.round + '</h2>' + KINDS.map(function (k) { return '<h3>' + C.ASSETS[k].name + '</h3><p>' + esc(U.texts.dir[k]).replace(/\n/g, '<br>') + '</p>'; }).join(''));
+  if (act === 'csv') download('mission-record-' + slug() + '.csv', 'text/csv', [['Arrived', 'Robot', 'Sensor', 'Saw', 'Square', 'Confidence', 'Decision']].concat(recordRows(U.sim)).map(function (r) { return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(','); }).join('\n'));
+  if (act === 'copyCode') { var box = $('codeBox'); box.select(); try { navigator.clipboard.writeText(box.value).then(function () { msg('Code copied.'); }, function () { document.execCommand('copy'); msg('Code copied.'); }); } catch (er) { document.execCommand('copy'); msg('Code copied.'); } }
+  if (act === 'review') dialog('<h2>Every report, with the truth</h2><div class="note">Look at what the real ones had in common: the description, other sensors agreeing, the place.</div>' + recordTable(U.sim, true));
+  if (act === 'pack') download('unit-pack-' + slug() + '.html', 'text/html', unitPack());
+  if (act === 'next') { U.round = Math.min(3, U.round + 1); U.phase = 'setup'; U.sim = null; U.mapMode = 'briefing'; U.texts.op = ''; save(); render(); }
+});
+function slug() { return (U.group + '-r' + U.round).replace(/[^a-z0-9-]+/gi, '_'); }
+function download(name, type, text) { var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: type })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
+function printHTML(html) { $('printArea').innerHTML = html; window.print(); }
+function cfgSummary(cfg) {
+  return KINDS.map(function (k) { var a = cfg[k]; return '<li><b>' + C.ASSETS[k].name + '</b>: zone ' + C.ZONES[cfg.command.zones[k]].name + ', ' + C.SENSORS[a.primary].name + (a.fallback ? ' then ' + C.SENSORS[a.fallback].name : '') + (k !== 'mast' ? ', speed ' + a.speed + ', on detection ' + a.onDet + (k === 'drone' ? ', altitude ' + a.alt : '') + ', if position lost: ' + (a.lostRule || 'carry') : ', at ' + C.square(a.pos[0], a.pos[1])) + '</li>'; }).join('') +
+    '<li><b>Command</b>: report above ' + cfg.command.threshold + '%, interval ' + (cfg.command.interval || 'immediate') + ', budget ' + cfg.command.budget + '/min per asset, revisits ' + (cfg.command.revisit ? 'allowed' : 'not allowed') + '</li>' +
+    '<li><b>Operator</b>: ' + cfg.operator.order + ' first, hide below ' + cfg.operator.filter + '%, expiry ' + cfg.operator.expiry + ' s</li>';
+}
+function unitPack() {
+  var S = U.sim, sc = C.score(S);
+  return '<!doctype html><meta charset="utf-8"><title>Unit pack ' + esc(U.group) + ' round ' + U.round + '</title><style>body{font:14px Arial;max-width:900px;margin:20px auto;padding:0 16px}h1,h2{color:#45004D}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:3px 6px;text-align:left}</style>' +
+    '<h1>Unit pack · ' + esc(U.group) + ' · round ' + U.round + '</h1><p>Seed ' + S.spec.seed + ' · weather at start: ' + esc(C.WEATHER[S.spec.weather].label) + ' · mission ' + S.spec.length + ' s</p>' +
+    '<h2>Configuration and rules</h2><ul>' + cfgSummary(S.cfg) + '</ul>' +
+    '<h2>Scorecard</h2><p>Total <b>' + sc.total + '</b>: ' + sc.found + '/6 real contacts confirmed, ' + sc.falseConf + ' false confirmations, ' + sc.expired + ' expired, ' + sc.area + '% area kept under watch, first confirmation ' + (sc.tFirst == null ? 'none' : mmss(sc.tFirst)) + ', ' + sc.dropped + ' reports dropped.</p>' +
+    '<h2>Operator workload</h2><p>Mean decision time ' + sc.workload.meanDecision + ' s, longest queue ' + sc.workload.maxQueue + ', self-rating ' + U.workload.join(' / ') + ' (think / rushed / frustrated).</p>' +
+    '<h2>Operator report</h2><p>' + esc(U.texts.op).replace(/\n/g, '<br>') + '</p><h2>Command directions</h2>' + KINDS.map(function (k) { return '<p><b>' + C.ASSETS[k].name + ':</b> ' + esc(U.texts.dir[k]).replace(/\n/g, '<br>') + '</p>'; }).join('') +
+    '<h2>Briefing map corrections</h2><ul>' + U.corrections.map(function (m) { return '<li>' + C.square(m.x, m.y) + ': ' + esc(m.type) + '</li>'; }).join('') + '</ul>' +
+    '<h2>Mission log</h2><ul>' + S.events.map(function (e) { return '<li>' + mmss(e.t) + ' ' + esc(e.text) + '</li>'; }).join('') + '</ul><h2>Mission record (with the truth)</h2>' + recordTable(S, true) +
+    '<h2>After-action review</h2><p><i>What we set · What happened · Why · What we would change for a real unit.</i></p>';
+}
+
+/* ---------- phase buttons ---------- */
+document.addEventListener('click', function (e) {
+  var id = e.target && e.target.id;
+  if (id === 'btnFreeze') { var errs = C.validate(U.cfg); if (errs.length) { msg(errs[0], true); return; } U.sim = C.createSim(U.cfg, spec()); U.phase = 'mission'; U.running = false; U.mapMode = 'briefing'; save(); render(); }
+  if (id === 'btnRun') { U.running = !U.running; last = performance.now(); updateMission(); }
+  if (id === 'btnToGap') { U.phase = 'gap'; U.gapTab = 'record'; U.running = false; render(); }
+  if (id === 'btnDebrief') { U.phase = 'debrief'; U.mapMode = 'truth'; var sc = C.score(U.sim); U.results.push({ g: U.group, r: U.round, total: sc.total }); save(); render(); }
+  if (id === 'btnBig') { U.big = !U.big; save(); render(); }
+  if (id === 'btnHelp') showHelp();
+  if (id === 'btnBoard') showBoard();
+  if (id === 'btnFac') showFac();
+});
+
+/* ---------- main loop ---------- */
+var last = performance.now(), sideTimer = 0;
+function tick() {
+  var now = performance.now(), dt = Math.min(0.5, (now - last) / 1000); last = now;
+  if (U.phase === 'mission' && U.running && U.sim && !U.sim.done) {
+    var simDt = dt * U.speed; while (simDt > 1e-6) { var s = Math.min(0.25, simDt); C.step(U.sim, s); simDt -= s; }
+    sideTimer += dt; if (sideTimer > 0.2 || U.sim.done) { sideTimer = 0; updateMission(); }
+    if (U.sim.done) { U.running = false; msg('Mission over. Go to the gap.'); updateMission(); }
+  }
+}
+setInterval(tick, 50);
+function loop() { if (U.phase === 'mission') draw(); requestAnimationFrame(loop); }
+
+/* ---------- dialogs ---------- */
+function dialog(html) { var o = document.createElement('div'); o.className = 'overlay'; o.innerHTML = '<div class="dialog">' + html + '<div style="text-align:right;margin-top:12px"><button class="primary" data-close>Close</button></div></div>'; o.addEventListener('click', function (e) { if (e.target === o || e.target.hasAttribute('data-close')) o.remove(); }); document.body.appendChild(o); return o; }
+function showHelp() {
+  dialog('<h2>How it works</h2><p>Your group is one hybrid patrol unit: a drone, a ground robot and a sensor mast (the machines), plus an operator station and a command element (the people). All groups play the same world with the same events at the same times.</p>' +
+    '<h3>Each round</h3><ol><li><b>Setup.</b> Asset leads choose sensors, motion and patrol path. The commander allocates zones and sets the reporting rules. The operators choose how their queue works. Then everything freezes.</li>' +
+    '<li><b>Mission.</b> The operators confirm or reject each report as it arrives. Nobody else touches the laptop. Disruptions appear only in the mission log.</li>' +
+    '</ol><h3>Operators: four checks before you confirm</h3><ol class="checks"><li><b>What did it see?</b> Does the description fit a real target?</li><li><b>Does another sensor agree?</b> Two different sensors near the same place is much stronger evidence.</li><li><b>Does it make sense there?</b> A vehicle in the marsh or a hot spot on a roof is suspicious.</li><li><b>Can this sensor be trusted right now?</b> Camera at night, thermal at midday, acoustic in rain: weak.</li></ol><div class="note">Confidence is the robot\'s own guess: use it to sort, not to decide. Confirming a false contact costs 20 points, letting a report expire costs 4, rejecting costs nothing, but a real contact nobody confirms earns nothing.</div><ol start="3">' +
+    '<li><b>Gap.</b> Operators write one report for the commander from the mission record. The commander writes one direction per asset. Everyone corrects the briefing map.</li>' +
+    '<li><b>Debrief.</b> The truth is revealed, with the score and the result code for the leaderboard.</li></ol>' +
+    '<h3>Sensor view</h3><p>During setup and the mission you can see what each sensor actually returns: a camera picture, a heat image, lidar points, a radar echo or a sound trace. This is all the robot gets. People decide what it means.</p><h3>Scoring</h3><p>+30 per real contact confirmed · −20 per false or misplaced confirmation · −4 per expired report · +1 per % of the area kept under watch (seen in the last minute, averaged over the mission) · up to +30 for a fast first confirmation · −1 per report dropped by the comms budget.</p>' +
+    '<p class="note">Everything runs in this one file. No internet is needed. Settings are kept in this browser until you reset them.</p>');
+}
+function showBoard() {
+  var o = dialog('<h2>Leaderboard</h2><p class="note">Paste the result codes from every group, one per line.</p><textarea id="codes" rows="8" placeholder="PU1.…"></textarea><div style="margin:6px 0"><button class="primary" id="btnRank">Rank</button></div><div id="board"></div>');
+  o.querySelector('#btnRank').onclick = function () {
+    var rows = [], bad = 0;
+    o.querySelector('#codes').value.split(/\s+/).filter(Boolean).forEach(function (c) { try { var p = c.split('.'); var j = decodeURIComponent(escape(atob(p[1]))); if (String(C.hashStr(j) % 10000) !== p[2]) throw 0; rows.push(JSON.parse(j)); } catch (e) { bad++; } });
+    var byRound = {}; rows.forEach(function (r) { (byRound[r.r] = byRound[r.r] || []).push(r); });
+    o.querySelector('#board').innerHTML = (bad ? '<p class="warn">' + bad + ' code(s) could not be read.</p>' : '') + Object.keys(byRound).sort().map(function (k) { return '<h3>Round ' + k + '</h3><table><tr><th>#</th><th>Group</th><th>Total</th><th>Found</th><th>False</th><th>Expired</th><th>Area</th><th>Dropped</th></tr>' + byRound[k].sort(function (a, b) { return b.t - a.t; }).map(function (r, i) { return '<tr><td>' + (i + 1) + '</td><td>' + esc(r.g) + '</td><td><b>' + r.t + '</b></td><td>' + r.f + '</td><td>' + r.fc + '</td><td>' + r.e + '</td><td>' + r.a + '%</td><td>' + r.d + '</td></tr>'; }).join('') + '</table>'; }).join('');
+  };
+}
+function showFac() {
+  var o = dialog('<h2>Facilitator settings</h2><p class="note">Keep the defaults so every group plays the same world. Change them only for practice runs.</p>' +
+    '<label class="row">Seed (blank = round default) <input id="fSeed" type="number" value="' + esc(U.ov.seed) + '"></label>' +
+    '<label class="row">Mission length <select id="fLen">' + opt([[240, '4 min'], [360, '6 min'], [480, '8 min']], U.ov.length) + '</select></label>' +
+    '<label class="row">Weather (blank = round default) <select id="fWx"><option value="">round default</option>' + opt(Object.keys(C.WEATHER).map(function (w) { return [w, C.WEATHER[w].label]; }), U.ov.weather) + '</select></label>' +
+    '<p><button id="fSave" class="primary">Apply</button> <button id="fReset">Reset everything on this laptop</button></p><p class="note">Round defaults: 1 clear day, no disruptions · 2 night with comms break, drone sensor fault, ground robot loses positioning · 3 heavy rain turning to dust, comms break, drone lost, mast sensor fault.</p>');
+  o.querySelector('#fSave').onclick = function () { U.ov = { seed: o.querySelector('#fSeed').value, length: +o.querySelector('#fLen').value, weather: o.querySelector('#fWx').value }; save(); o.remove(); render(); msg('Settings applied.'); };
+  o.querySelector('#fReset').onclick = function () { if (o.querySelector('#fReset').dataset.armed) { try { localStorage.removeItem(STORE); } catch (e) { /* ignore */ } location.reload(); } else { o.querySelector('#fReset').dataset.armed = '1'; o.querySelector('#fReset').textContent = 'Click again to confirm reset'; } };
+}
+
+window.addEventListener('error', function (e) { var d = document.body.getAttribute('data-errors') || ''; document.body.setAttribute('data-errors', d + '|' + e.message); });
+load(); if (U.phase !== 'setup') U.phase = 'setup';
+render(); requestAnimationFrame(loop);
+window.__U = U; window.__render = render;
+})();
+</script>
+</body>
+</html>
