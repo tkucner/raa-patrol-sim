@@ -104,6 +104,7 @@ th{background:var(--plum);color:#fff}
 <div id="printArea"></div>
 
 <script id="core">
+/* Patrol Unit Simulator: simulation core (shared by server and browser) */
 /* ================= SIMULATION CORE (no DOM) ================= */
 (function (root) {
 'use strict';
@@ -197,10 +198,12 @@ function describe(c, s, moving, r) {
 var SPEEDQ = { slow: 1.15, normal: 1.0, fast: 0.75 };
 var REVISIT = { carry: 0, once: 8, three: 24, orbit: 45 };
 var PAYLOAD = 6;
+var BASE = [29.5, 19.5], BASE_CELL = [29, 19], RECHARGE = 45;
 
 function rating(m) { return m >= 0.8 ? 'good' : m >= 0.3 ? 'weak' : 'blind'; }
 function payloadOf(a) { var c = 0; if (a.primary) c += SENSORS[a.primary].cost; if (a.fallback) c += SENSORS[a.fallback].cost; return c; }
-function droneEndurance(a) { return 520 - 25 * payloadOf(a) - (a.speed === 'fast' ? 90 : a.speed === 'slow' ? -40 : 0) - (a.alt === 'high' ? 20 : 0); }
+function droneEndurance(a) { return 330 - 25 * payloadOf(a) - (a.speed === 'fast' ? 60 : a.speed === 'slow' ? -30 : 0) - (a.alt === 'high' ? 20 : 0); }
+function groundEndurance(a) { return 600 - 30 * payloadOf(a) - (a.speed === 'fast' ? 120 : a.speed === 'slow' ? -60 : 0); }
 
 function contactPos(c, t) {
   if (!c.speed || c.path.length < 2) return { x: c.path[0][0] + 0.5, y: c.path[0][1] + 0.5, moving: false };
@@ -331,8 +334,8 @@ function applyPreset(cfg, kind, key) {
   var a = { preset: key, primary: p.primary, fallback: p.fallback, lostRule: old.lostRule || 'carry' };
   if (kind !== 'mast') { a.speed = p.speed; a.onDet = p.onDet; }
   if (kind === 'drone') a.alt = p.alt;
-  if (kind === 'mast') { var keepPos = old.pos && zoneOf(old.pos[0], old.pos[1]) === z; a.pos = keepPos ? old.pos : routeTemplate('mast', z, 'centre')[0]; a.route = keepPos ? (old.route || 'centre') : 'centre'; }
-  else { var keep = old.path && old.path.length >= 2 && old.path.every(function (q) { return zoneOf(q[0], q[1]) === z; }); a.path = keep ? old.path : routeTemplate(kind, z, kind === 'drone' ? 'loop' : 'long'); a.route = keep ? (old.route || 'custom') : (kind === 'drone' ? 'loop' : 'long'); }
+  if (kind === 'mast') { var keepPos = !!old.pos; a.pos = keepPos ? old.pos : routeTemplate('mast', z, 'centre')[0]; a.route = keepPos ? (old.route || 'centre') : 'centre'; }
+  else { var keep = old.path && old.path.length >= 2; a.path = keep ? old.path : routeTemplate(kind, z, kind === 'drone' ? 'loop' : 'long'); a.route = keep ? (old.route || 'custom') : (kind === 'drone' ? 'loop' : 'long'); }
   cfg[kind] = a;
 }
 
@@ -345,6 +348,17 @@ function roundSpec(r, ov) {
   return { round: r, seed: ov.seed != null && ov.seed !== '' ? +ov.seed : b.seed, weather: ov.weather || b.weather, length: +(ov.length || 360), injects: b.injects.slice() };
 }
 
+function zonesCovered(cfg) {
+  var z = {};
+  function mark(x, y, r) { for (var dy = -r; dy <= r; dy += 2) for (var dx = -r; dx <= r; dx += 2) { var xx = x + dx, yy = y + dy; if (inb(xx | 0, yy | 0) && dx * dx + dy * dy <= r * r) z[zoneOf(xx | 0, yy | 0)] = 1; } }
+  ['drone', 'ground'].forEach(function (k) {
+    var a = cfg[k], p = a.path || []; if (!p.length) return; var r = (SENSORS[a.primary] ? SENSORS[a.primary].range : 6) * (k === 'drone' && a.alt === 'high' ? 1.3 : 1) * 0.6;
+    var pts = k === 'ground' ? groundRoute(WORLD.brief, p).cells : p.concat([p[0]]);
+    for (var i = 0; i < pts.length; i++) { var q = pts[i], nx = pts[i + 1] || q, n = Math.max(1, Math.ceil(Math.hypot(nx[0] - q[0], nx[1] - q[1]) / 2)); for (var j = 0; j < n; j++) mark(q[0] + (nx[0] - q[0]) * j / n, q[1] + (nx[1] - q[1]) * j / n, r); }
+  });
+  if (cfg.mast.pos && SENSORS[cfg.mast.primary]) mark(cfg.mast.pos[0], cfg.mast.pos[1], SENSORS[cfg.mast.primary].range * 1.15 * 0.6);
+  return z;
+}
 function validate(cfg) {
   var errs = [];
   ['drone', 'ground', 'mast'].forEach(function (k) {
@@ -372,9 +386,9 @@ function createSim(cfg, spec) {
     st.driftAng = st.rng() * Math.PI * 2;
     S.obsBy[k] = new Uint8Array(W * H);
     if (k === 'mast') { st.x = a.pos[0] + 0.5; st.y = a.pos[1] + 0.5; st.launch = [st.x, st.y]; st.onRidge = WORLD.truth[idx(a.pos[0], a.pos[1])] === T.RIDGE; }
-    else if (k === 'drone') { st.route = a.path.map(function (p) { return [p[0] + 0.5, p[1] + 0.5]; }); st.x = st.route[0][0]; st.y = st.route[0][1]; st.launch = [st.x, st.y]; st.wp = 1 % st.route.length; st.endurance = droneEndurance(a); }
+    else if (k === 'drone') { st.route = a.path.map(function (p) { return [p[0] + 0.5, p[1] + 0.5]; }); st.x = BASE[0]; st.y = BASE[1]; st.launch = BASE.slice(); st.wp = 0; st.battery = st.cap = droneEndurance(a); }
     else { var r = groundRoute(WORLD.truth, a.path); st.route = r.cells.map(function (p) { return [p[0] + 0.5, p[1] + 0.5]; }); st.loop = r.loop; st.blocked = r.blocked; st.blockedAt = r.blockedAt; st.dir = 1;
-      if (!st.route.length) st.route = [[a.path[0][0] + 0.5, a.path[0][1] + 0.5]]; st.x = st.route[0][0]; st.y = st.route[0][1]; st.launch = [st.x, st.y]; st.wp = st.route.length > 1 ? 1 : 0; }
+      if (!st.route.length) st.route = [[a.path[0][0] + 0.5, a.path[0][1] + 0.5]]; st.x = st.route[0][0]; st.y = st.route[0][1]; st.launch = [st.x, st.y]; st.wp = st.route.length > 1 ? 1 : 0; st.battery = st.cap = groundEndurance(a); }
     S.assets[k] = st;
   });
   ev(S, 'Mission start. Weather: ' + WEATHER[S.weather].label + '.');
@@ -392,19 +406,42 @@ function activeSensor(S, st) {
 }
 function moveToward(st, tx, ty, dist) { var dx = tx - st.x, dy = ty - st.y, d = Math.hypot(dx, dy); if (d <= dist) { st.x = tx; st.y = ty; return true; } st.x += dx / d * dist; st.y += dy / d * dist; return false; }
 
+function roadPath(from, to) {
+  var a = [clamp(Math.floor(from[0]), 0, W - 1), clamp(Math.floor(from[1]), 0, H - 1)], b = [Math.floor(to[0]), Math.floor(to[1])];
+  var p = bfsRoad(WORLD.truth, a, b); return p ? p.map(function (c) { return [c[0] + 0.5, c[1] + 0.5]; }) : null;
+}
 function stepAsset(S, st, dt) {
-  if (!st.alive || st.landed || st.kind === 'mast') return;
-  var a = S.cfg[st.kind];
-  if (st.kind === 'drone' && S.t >= st.endurance) { st.landed = true; ev(S, 'Drone: battery empty, drone has landed.', 'warn'); return; }
-  var v = ASSETS[st.kind].speeds[a.speed] * dt, moved = false;
+  if (!st.alive || st.kind === 'mast') return;
+  var a = S.cfg[st.kind], v = ASSETS[st.kind].speeds[a.speed] * dt, moved = false;
+  /* battery: recharging at base */
+  if (st.charging) { if (S.t >= st.charging) { st.charging = 0; st.battery = st.cap; st.landed = false; ev(S, st.name + ': recharged, back on patrol.'); } return; }
+  /* battery: going home */
+  if (st.goingHome) {
+    var home = st.kind === 'drone' ? BASE : null, arrived;
+    if (st.kind === 'drone') arrived = moveToward(st, BASE[0], BASE[1], v);
+    else { if (!st.homePath || !st.homePath.length) arrived = true; else { var hp = st.homePath[0]; if (moveToward(st, hp[0], hp[1], v)) st.homePath.shift(); arrived = !st.homePath.length; } }
+    st.battery -= dt;
+    if (arrived) { st.goingHome = false; st.charging = S.t + RECHARGE; st.landed = true; st.revisit = null; if (st.kind === 'ground') st.backPath = roadPath([st.x, st.y], st.route[st.wp] || st.route[0]); ev(S, st.name + ': at base, recharging for ' + RECHARGE + ' s.'); }
+    void home; return;
+  }
   if (st.halted) return;
+  /* battery check: time needed to get home plus a margin */
+  var distHome = st.kind === 'drone' ? Math.hypot(st.x - BASE[0], st.y - BASE[1]) : Math.abs(st.x - BASE[0]) + Math.abs(st.y - BASE[1]);
+  var speedNow = ASSETS[st.kind].speeds[a.speed];
+  if (st.battery <= distHome / speedNow + 6) {
+    st.goingHome = true; st.revisit = null;
+    if (st.kind === 'ground') { st.homePath = roadPath([st.x, st.y], BASE_CELL); if (!st.homePath) { st.goingHome = false; st.alive = false; ev(S, 'Ground robot: battery empty and no road home. Robot is out.', 'warn'); return; } }
+    ev(S, st.name + ': battery low, returning to base to recharge.', 'warn'); return;
+  }
   if (st.revisit) {
     var R = st.revisit;
     if (st.kind === 'drone' && !R.arrived) { R.arrived = moveToward(st, R.x, R.y, v); moved = true; }
-    else { if (R.until == null) R.until = S.t + REVISIT[a.onDet]; if (S.t >= R.until) { st.revisit = null; st.cooldown = S.t + 10; } }
+    else { if (R.until == null) R.until = S.t + (R.ordered ? 15 : REVISIT[a.onDet]); if (S.t >= R.until) { st.revisit = null; st.cooldown = S.t + 10; } }
   } else if (st.returning) {
     if (moveToward(st, st.launch[0], st.launch[1], v)) { st.halted = true; ev(S, st.name + ': back at its start point, holding.'); } moved = true;
-  } else if (st.route.length > 1) {
+  } else if (st.backPath && st.backPath.length) {
+    var bp = st.backPath[0]; if (moveToward(st, bp[0], bp[1], v)) st.backPath.shift(); moved = true;
+  } else if (st.route.length > 1 || (st.kind === 'drone' && st.route.length)) {
     var tgt = st.route[st.wp];
     if (moveToward(st, tgt[0], tgt[1], v)) {
       if (st.kind === 'drone' || st.loop) st.wp = (st.wp + 1) % st.route.length;
@@ -413,6 +450,7 @@ function stepAsset(S, st, dt) {
     }
     moved = true;
   }
+  st.battery -= st.kind === 'drone' ? dt : (moved ? dt : dt * 0.3);
   if (moved && st.gpsLost) { st.off[0] += (Math.cos(st.driftAng) * 0.09 + gauss(st.rng) * 0.04) * dt; st.off[1] += (Math.sin(st.driftAng) * 0.09 + gauss(st.rng) * 0.04) * dt; }
 }
 
@@ -463,7 +501,7 @@ function detect(S, st, sensor, d) {
   var a = S.cfg[st.kind];
   if (cmd.revisit && a.onDet && a.onDet !== 'carry' && !st.revisit && S.t >= st.cooldown && st.kind !== 'mast' && !st.halted)
     st.revisit = { x: clamp(d.x, 0, W - 1), y: clamp(d.y, 0, H - 1), arrived: st.kind !== 'drone' };
-  S.outbox.push({ asset: st.kind, sensor: sensor, tDet: S.t, x: d.x, y: d.y, conf: d.conf, src: d.src, real: d.real, tx: d.tx, ty: d.ty, desc: d.desc, look: d.look, moving: d.moving, wx: S.weather });
+  S.outbox.push({ asset: st.kind, sensor: sensor, tDet: S.t, x: d.x, y: d.y, conf: d.conf, src: d.src, real: d.real, tx: d.tx, ty: d.ty, desc: d.desc, look: d.look, moving: d.moving, wx: S.weather, alt: st.kind === 'drone' ? S.cfg.drone.alt : null });
   if (!cmd.interval) flushOutbox(S);
 }
 function flushOutbox(S) {
@@ -504,15 +542,25 @@ function step(S, dt) {
     var w = 0; for (var c = 0; c < W * H; c++) if (S.t - S.lastSeen[c] <= 60) w++; S.watchSum += w; S.watchN++;
     var open = 0; S.reports.forEach(function (r) { if (r.status === 'open') open++; }); if (open > S.maxQueue) S.maxQueue = open;
   }
-  S.reports.forEach(function (r) { if (r.status === 'open' && S.t >= r.exp) { r.status = 'expired'; r.tDec = r.exp; } });
+  S.reports.forEach(function (r) { if (r.status === 'open' && S.t >= r.exp) { r.status = 'expired'; r.tDec = r.exp; r.expiredAt = 'operator'; } else if (r.status === 'assessed' && S.t >= r.cmdExp) { r.status = 'expired'; r.tDec = r.cmdExp; r.expiredAt = 'command'; } });
   if (S.t >= S.spec.length) {
     S.done = true; if (S.cfg.command.interval) flushOutbox(S);
-    S.reports.forEach(function (r) { if (r.status === 'open') { r.status = 'expired'; r.tDec = S.t; } });
+    S.reports.forEach(function (r) { if (r.status === 'open' || r.status === 'assessed') { r.expiredAt = r.status === 'open' ? 'operator' : 'command'; r.status = 'expired'; r.tDec = S.t; } });
     ev(S, 'Mission over.');
   }
 }
+function assess(S, id, verdict, note, by) {
+  for (var i = 0; i < S.reports.length; i++) { var r = S.reports[i]; if (r.id === id && r.status === 'open') { r.status = 'assessed'; r.verdict = verdict; r.note = note || ''; r.by = by || ''; r.tAss = S.t; r.cmdExp = S.t + (S.cfg.command.decideWithin || 40); return true; } }
+  return false;
+}
+function cqueue(S) { return S.reports.filter(function (r) { return r.status === 'assessed'; }).sort(function (a, b) { return a.tAss - b.tAss; }); }
+function retask(S, asset, x, y) {
+  var st = S.assets[asset]; if (!st || !st.alive || st.landed || st.kind === 'mast' || st.halted || st.returning) return false;
+  st.revisit = { x: clamp(x, 0, W - 1), y: clamp(y, 0, H - 1), arrived: st.kind !== 'drone', until: null, ordered: true };
+  ev(S, st.name + ': ordered to re-check square ' + square(x, y) + '.'); return true;
+}
 function decide(S, id, decision) {
-  for (var i = 0; i < S.reports.length; i++) { var r = S.reports[i]; if (r.id === id && r.status === 'open') { r.status = decision; r.tDec = S.t; return true; } }
+  for (var i = 0; i < S.reports.length; i++) { var r = S.reports[i]; if (r.id === id && (r.status === 'open' || r.status === 'assessed')) { r.status = decision; r.tDec = S.t; return true; } }
   return false;
 }
 function queue(S) {
@@ -521,10 +569,11 @@ function queue(S) {
   return q;
 }
 function score(S) {
-  var found = {}, badSrc = {}, falseConf = 0, misplaced = 0, expired = 0, tFirst = null, decTimes = [];
+  var ops = { n: 0, ok: 0 }, found = {}, badSrc = {}, falseConf = 0, misplaced = 0, expired = 0, tFirst = null, decTimes = [];
   S.reports.forEach(function (r) {
     if (r.status === 'expired') expired++;
     if (r.status === 'confirmed' || r.status === 'rejected') decTimes.push(r.tDec - r.tArr);
+    if (r.verdict) { ops.n++; var ok = (r.verdict === 'real') === (r.real && Math.hypot(r.x - r.tx, r.y - r.ty) <= 5); if (ok) ops.ok++; }
     if (r.status !== 'confirmed') return;
     var err = Math.hypot(r.x - r.tx, r.y - r.ty);
     if (r.real && err <= 5) { if (!found[r.src]) found[r.src] = r.tDec; if (tFirst == null || r.tDec < tFirst) tFirst = r.tDec; }
@@ -539,7 +588,7 @@ function score(S) {
   ['drone', 'ground', 'mast'].forEach(function (k) { var st = S.assets[k], o = 0; for (var i = 0; i < W * H; i++) o += S.obsBy[k][i]; perAsset[k] = { area: Math.round(o / (W * H) * 100), realDetected: Object.keys(st.stats.realDet).length, reports: st.stats.reports, falseSent: st.stats.falseSent }; });
   var meanDec = decTimes.length ? decTimes.reduce(function (a, b) { return a + b; }, 0) / decTimes.length : 0;
   return { seenOnce: seenOnce, found: nFound, foundIds: Object.keys(found), falseConf: falseConf, misplaced: misplaced, expired: expired, area: area, tFirst: tFirst, dropped: S.counters.dropped,
-           pts: pts, total: total, perAsset: perAsset, workload: { expired: expired, meanDecision: Math.round(meanDec * 10) / 10, maxQueue: S.maxQueue, reports: S.reports.length, filtered: S.reports.filter(function (r) { return r.status === 'filtered'; }).length } };
+           pts: pts, total: total, perAsset: perAsset, ops: ops, workload: { expired: expired, meanDecision: Math.round(meanDec * 10) / 10, maxQueue: S.maxQueue, reports: S.reports.length, filtered: S.reports.filter(function (r) { return r.status === 'filtered'; }).length } };
 }
 function runHeadless(cfg, spec, policy) {
   var S = createSim(cfg, spec);
@@ -548,13 +597,156 @@ function runHeadless(cfg, spec, policy) {
 }
 function logHash(S) { return hashStr(JSON.stringify(S.reports.map(function (r) { return [r.id, r.asset, r.sensor, r.tArr, r.conf, r.src, r.status, Math.round(r.x * 100)]; })) + JSON.stringify(S.events)); }
 
-root.SimCore = { DET: DET, CLUT: CLUT, W: W, H: H, CELL_M: CELL_M, T: T, WORLD: WORLD, ZONES: ZONES, CONTACTS: CONTACTS, SENSORS: SENSORS, WEATHER: WEATHER, ASSETS: ASSETS, PRESETS: PRESETS,
+root.SimCore = { DET: DET, CLUT: CLUT, BASE: BASE, RECHARGE: RECHARGE, groundEndurance: groundEndurance, zonesCovered: zonesCovered, W: W, H: H, CELL_M: CELL_M, T: T, WORLD: WORLD, ZONES: ZONES, CONTACTS: CONTACTS, SENSORS: SENSORS, WEATHER: WEATHER, ASSETS: ASSETS, PRESETS: PRESETS,
   REVISIT: REVISIT, PAYLOAD: PAYLOAD, idx: idx, inb: inb, zoneOf: zoneOf, square: square, rating: rating, payloadOf: payloadOf, droneEndurance: droneEndurance,
   contactPos: contactPos, ROUTES: ROUTES, routeTemplate: routeTemplate, groundRoute: groundRoute, bfsRoad: bfsRoad, pathLength: pathLength, defaultPath: defaultPath, defaultConfig: defaultConfig,
-  applyPreset: applyPreset, roundSpec: roundSpec, validate: validate, createSim: createSim, step: step, decide: decide, queue: queue, score: score,
+  applyPreset: applyPreset, roundSpec: roundSpec, validate: validate, createSim: createSim, step: step, decide: decide, assess: assess, cqueue: cqueue, retask: retask, queue: queue, score: score,
   runHeadless: runHeadless, logHash: logHash, hashStr: hashStr };
 if (typeof module !== 'undefined' && module.exports) module.exports = root.SimCore;
 })(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+
+<script id="views">
+/* Patrol Unit Simulator: sensor views (what each sensor returns, seen from its platform).
+   Shared by the classroom client and the single-file version. Needs window.SimCore. */
+(function (root) {
+'use strict';
+var C = root.SimCore;
+var CAPTION = { camera: 'Shape and colour, if there is light. Cannot see heat.', thermal: 'Heat only. Shows that something is warm, not what it is.',
+  lidar: 'Exact shape and distance as points. No colour, no heat.', radar: 'Something is there, and whether it moves. Not what it is.',
+  acoustic: 'A sound and roughly where it came from. No position, no shape.' };
+var VIEWPOINT = { eye: 'eye level', mast: 'from the mast, about 10 m up', oblique: 'from the drone, low and angled', nadir: 'from the drone, high and looking down' };
+function vrng(seed) { var a = seed >>> 0; return function () { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; }; }
+function viewMode(o) { if (o.platform === 'drone') return o.alt === 'low' ? 'oblique' : 'nadir'; if (o.platform === 'mast') return 'mast'; return 'eye'; }
+
+/* side view (ground robot, mast) */
+function sideShape(g, look, cx, cy, k, r) {
+  g.beginPath();
+  if (look === 'person') { g.arc(cx, cy - 34 * k, 7 * k, 0, 7); g.rect(cx - 8 * k, cy - 27 * k, 16 * k, 26 * k); g.rect(cx - 7 * k, cy - 2 * k, 5 * k, 20 * k); g.rect(cx + 2 * k, cy - 2 * k, 5 * k, 20 * k); }
+  else if (look === 'vehicle') { g.rect(cx - 44 * k, cy - 14 * k, 88 * k, 22 * k); g.rect(cx - 18 * k, cy - 30 * k, 36 * k, 17 * k); g.moveTo(cx - 20 * k, cy + 10 * k); g.arc(cx - 26 * k, cy + 10 * k, 8 * k, 0, 7); g.moveTo(cx + 34 * k, cy + 10 * k); g.arc(cx + 26 * k, cy + 10 * k, 8 * k, 0, 7); }
+  else if (look === 'heat') { g.arc(cx + 18 * k, cy - 22 * k, 7 * k, 0, 7); }
+  else if (look === 'animal') { g.ellipse(cx, cy, 20 * k, 9 * k, 0, 0, 7); g.moveTo(cx + 26 * k, cy - 6 * k); g.arc(cx + 22 * k, cy - 8 * k, 6 * k, 0, 7); g.rect(cx - 14 * k, cy + 6 * k, 4 * k, 12 * k); g.rect(cx + 10 * k, cy + 6 * k, 4 * k, 12 * k); }
+  else if (look === 'debris') { g.moveTo(cx - 40 * k, cy + 16 * k); g.lineTo(cx - 24 * k, cy - 6 * k); g.lineTo(cx - 6 * k, cy + 2 * k); g.lineTo(cx + 10 * k, cy - 14 * k); g.lineTo(cx + 36 * k, cy + 16 * k); g.closePath(); }
+  else if (look === 'metal') { g.rect(cx - 46 * k, cy - 20 * k, 92 * k, 10 * k); }
+  else { for (var i = 0; i < 5; i++) { var x = cx + (r() - 0.5) * 40 * k, y = cy + (r() - 0.5) * 24 * k; g.moveTo(x + 10 * k, y); g.arc(x, y, (5 + r() * 8) * k, 0, 7); } }
+  g.fill();
+}
+/* seen from above (drone); sq < 1 squashes for an oblique angle */
+function topShape(g, look, cx, cy, k, r, sq) {
+  g.beginPath();
+  if (look === 'person') { g.ellipse(cx, cy + 1 * k, 7 * k, 4 * k * sq, 0, 0, 7); g.moveTo(cx + 3.4 * k, cy - 2 * k * sq); g.arc(cx, cy - 2 * k * sq, 3.4 * k, 0, 7); }
+  else if (look === 'vehicle') { g.rect(cx - 10 * k, cy - 20 * k * sq, 20 * k, 40 * k * sq); }
+  else if (look === 'heat') { g.rect(cx - 3 * k, cy - 3 * k * sq, 6 * k, 6 * k * sq); }
+  else if (look === 'animal') { g.ellipse(cx, cy, 9 * k, 4 * k * sq, 0.3, 0, 7); g.moveTo(cx + 12 * k, cy - 2 * k); g.arc(cx + 10 * k, cy - 2 * k * sq, 2.5 * k, 0, 7); }
+  else if (look === 'debris') { g.moveTo(cx - 12 * k, cy + 6 * k * sq); g.lineTo(cx - 6 * k, cy - 8 * k * sq); g.lineTo(cx + 4 * k, cy - 4 * k * sq); g.lineTo(cx + 12 * k, cy - 9 * k * sq); g.lineTo(cx + 10 * k, cy + 8 * k * sq); g.closePath(); }
+  else if (look === 'metal') { g.rect(cx - 26 * k, cy - 14 * k * sq, 52 * k, 28 * k * sq); }
+  else { for (var i = 0; i < 4; i++) { var x = cx + (r() - 0.5) * 16 * k, y = cy + (r() - 0.5) * 10 * k; g.moveTo(x + 4 * k, y); g.arc(x, y, (2 + r() * 4) * k, 0, 7); } }
+  g.fill();
+}
+function geometry(mode, w, h) {
+  if (mode === 'mast') return { cx: w * 0.55, cy: h * 0.66, k: h / 240, top: false, sq: 1, horizon: 0.16 };
+  if (mode === 'oblique') return { cx: w * 0.52, cy: h * 0.62, k: h / 85, top: true, sq: 0.7, horizon: -1 };
+  if (mode === 'nadir') return { cx: w * 0.52, cy: h * 0.56, k: h / 190, top: true, sq: 1, horizon: -1 };
+  return { cx: w * 0.55, cy: h * 0.62, k: h / 170, top: false, sq: 1, horizon: 0.55 };
+}
+function drawTarget(g, look, G, r) { if (G.top) topShape(g, look, G.cx, G.cy, G.k, r, G.sq); else sideShape(g, look, G.cx, G.cy, G.k, r); }
+function shadow(g, look, G) {
+  if (look === 'unclear' || look === 'heat') return;
+  g.fillStyle = 'rgba(0,0,0,.28)'; g.beginPath();
+  if (G.top) { var s = look === 'vehicle' ? 1.5 : look === 'metal' ? 0 : 1; if (!s) return; g.ellipse(G.cx + 9 * G.k, G.cy + 7 * G.k, (look === 'vehicle' ? 12 : 8) * G.k, (look === 'vehicle' ? 22 : 4) * G.k * G.sq, 0.5, 0, 7); }
+  else g.ellipse(G.cx + 10 * G.k, G.cy + 20 * G.k, (look === 'vehicle' ? 50 : 16) * G.k, 5 * G.k, 0, 0, 7);
+  g.fill();
+}
+/* ground seen by a camera from each viewpoint */
+function cameraGround(g, w, h, mode, G, r, look) {
+  if (mode === 'eye' || mode === 'mast') {
+    var hz = h * G.horizon, sky = g.createLinearGradient(0, 0, 0, hz); sky.addColorStop(0, '#9cc3e6'); sky.addColorStop(1, '#dfe9f1'); g.fillStyle = sky; g.fillRect(0, 0, w, hz);
+    var gr = g.createLinearGradient(0, hz, 0, h); gr.addColorStop(0, '#a49a7a'); gr.addColorStop(1, '#7d7458'); g.fillStyle = gr; g.fillRect(0, hz, w, h - hz);
+    g.strokeStyle = 'rgba(60,50,30,.18)'; g.lineWidth = 1;
+    for (var i = -8; i <= 8; i++) { g.beginPath(); g.moveTo(w / 2 + i * 8, hz); g.lineTo(w / 2 + i * w * 0.25, h); g.stroke(); }
+    for (var j = 1; j < 8; j++) { var y = hz + (h - hz) * Math.pow(j / 8, 1.8); g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
+    if (look === 'heat' || look === 'metal') { g.fillStyle = '#6b5b6e'; g.fillRect(G.cx - 70 * G.k, G.cy - 20 * G.k, 140 * G.k, 60 * G.k); }
+    return;
+  }
+  g.fillStyle = '#8f8a66'; g.fillRect(0, 0, w, h);
+  for (var p = 0; p < 26; p++) { g.fillStyle = 'rgba(' + (110 + r() * 40 | 0) + ',' + (110 + r() * 40 | 0) + ',' + (70 + r() * 30 | 0) + ',.55)'; var pw = (40 + r() * 120) * (mode === 'nadir' ? 0.8 : 1.3), ph = (30 + r() * 80) * (mode === 'nadir' ? 0.8 : 0.9); g.fillRect(r() * w - 20, r() * h - 20, pw, ph); }
+  g.fillStyle = '#a8a8a0';
+  if (mode === 'nadir') { g.fillRect(0, h * 0.78, w, h * 0.06); g.fillRect(w * 0.2, 0, w * 0.05, h); }
+  else { g.beginPath(); g.moveTo(w * 0.05, h); g.lineTo(w * 0.42, 0); g.lineTo(w * 0.5, 0); g.lineTo(w * 0.25, h); g.closePath(); g.fill(); }
+  if (mode === 'oblique') { g.strokeStyle = 'rgba(40,40,20,.15)'; for (var q = 1; q < 6; q++) { var yy = h * Math.pow(q / 6, 1.4); g.beginPath(); g.moveTo(0, yy); g.lineTo(w, yy); g.stroke(); } }
+  if (look === 'heat' || look === 'metal') { g.fillStyle = '#6b5b6e'; var bw = (mode === 'nadir' ? 60 : 90) * G.k, bh = (mode === 'nadir' ? 44 : 60) * G.k * G.sq; g.fillRect(G.cx - bw / 2, G.cy - bh / 2, bw, bh); g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(G.cx + bw / 2, G.cy - bh / 2 + 6, 10 * G.k, bh); }
+}
+function sensorView(cvs, o) {
+  var g = cvs.getContext('2d'), w = cvs.width, h = cvs.height, r = vrng(o.seed || 7), m = C.WEATHER[o.weather].m[o.sensor], blind = m < 0.3;
+  var q = Math.max(0.08, Math.min(1, (o.conf || 60) / 100)), look = o.look || 'unclear', mode = viewMode(o), G = geometry(mode, w, h), kk = h / 170;
+  g.save(); g.clearRect(0, 0, w, h);
+  if (o.sensor === 'camera') {
+    cameraGround(g, w, h, mode, G, r, look);
+    shadow(g, look, G);
+    g.fillStyle = look === 'metal' ? 'rgba(255,255,255,' + (0.5 + 0.5 * q) + ')' : look === 'vehicle' && G.top ? 'rgba(60,70,70,' + (0.35 + 0.65 * q) + ')' : 'rgba(40,40,40,' + (0.25 + 0.75 * q) + ')';
+    drawTarget(g, look, G, r);
+    if (look === 'vehicle' && G.top) { g.fillStyle = 'rgba(160,190,210,.8)'; g.fillRect(G.cx - 8 * G.k, G.cy - 15 * G.k * G.sq, 16 * G.k, 7 * G.k * G.sq); }
+    if (o.weather === 'rain') { g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1; for (var i = 0; i < 160; i++) { var x = r() * w, y = r() * h; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 4, y + 12); g.stroke(); } g.fillStyle = 'rgba(120,130,140,.35)'; g.fillRect(0, 0, w, h); }
+    if (o.weather === 'dust') { g.fillStyle = 'rgba(170,140,95,.86)'; g.fillRect(0, 0, w, h); }
+    if (o.weather === 'night') { g.fillStyle = 'rgba(0,0,8,.9)'; g.fillRect(0, 0, w, h); for (var j = 0; j < 900; j++) { g.fillStyle = 'rgba(255,255,255,' + r() * 0.18 + ')'; g.fillRect(r() * w, r() * h, 1.5, 1.5); } }
+  } else if (o.sensor === 'thermal') {
+    g.fillStyle = o.weather === 'heat' ? '#8a5a6a' : '#140a2a'; g.fillRect(0, 0, w, h);
+    if (G.top) { for (var p = 0; p < 14; p++) { g.fillStyle = 'rgba(70,40,110,' + (0.2 + r() * 0.3) + ')'; g.fillRect(r() * w, r() * h, 40 + r() * 100, 30 + r() * 60); } }
+    if (o.weather === 'heat') { for (var a = 0; a < 40; a++) { g.fillStyle = 'rgba(255,180,90,' + r() * 0.35 + ')'; g.beginPath(); g.arc(r() * w, r() * h, 8 + r() * 30, 0, 7); g.fill(); } }
+    if ((look === 'heat' || look === 'metal') && G.top) { g.fillStyle = '#2c1e48'; g.fillRect(G.cx - 40 * G.k, G.cy - 28 * G.k * G.sq, 80 * G.k, 56 * G.k * G.sq); }
+    var cool = look === 'debris' || look === 'metal', rad = (G.top ? 24 : 60) * G.k;
+    var hot = g.createRadialGradient(G.cx, G.cy - (G.top ? 0 : 10 * G.k), 1, G.cx, G.cy, rad); hot.addColorStop(0, cool ? '#3a3a70' : 'rgba(255,245,160,' + q + ')'); hot.addColorStop(1, cool ? '#26264f' : 'rgba(255,80,0,' + (0.4 + 0.5 * q) + ')');
+    g.fillStyle = hot; g.shadowColor = cool ? 'transparent' : '#ff9a00'; g.shadowBlur = 14 * q; drawTarget(g, look, G, r); g.shadowBlur = 0;
+    if (o.weather === 'rain' || o.weather === 'dust') { g.fillStyle = 'rgba(70,50,90,.55)'; g.fillRect(0, 0, w, h); }
+  } else if (o.sensor === 'lidar') {
+    g.fillStyle = '#05080c'; g.fillRect(0, 0, w, h);
+    var off = document.createElement('canvas'); off.width = w; off.height = h; var og = off.getContext('2d'); og.fillStyle = '#fff'; drawTarget(og, look, G, r);
+    if ((look === 'heat' || look === 'metal') && G.top) og.fillRect(G.cx - 40 * G.k, G.cy - 28 * G.k * G.sq, 80 * G.k, 56 * G.k * G.sq);
+    og.strokeStyle = '#fff'; og.lineWidth = 2;
+    if (mode === 'eye') og.fillRect(0, G.cy + 18 * G.k, w, 3);
+    else if (mode === 'mast') { for (var l = 1; l < 7; l++) { var yl = h * G.horizon + (h - h * G.horizon) * Math.pow(l / 7, 1.6); og.beginPath(); og.moveTo(0, yl); og.quadraticCurveTo(w / 2, yl + 8, w, yl); og.stroke(); } }
+    else { for (var ring = 1; ring < 9; ring++) { og.beginPath(); og.ellipse(w / 2, mode === 'nadir' ? h / 2 : h * 1.1, ring * w / 14, ring * w / 14 * (mode === 'nadir' ? 1 : 0.55), 0, 0, 7); og.stroke(); } }
+    var data = og.getImageData(0, 0, w, h).data, step = Math.max(3, Math.round(5 / q));
+    g.fillStyle = '#4fe3ff';
+    if (!blind) for (var yy = 0; yy < h; yy += step) for (var xx = (yy / step % 2) * step / 2; xx < w; xx += step) if (data[(yy * w + (xx | 0)) * 4 + 3] > 0 && r() < 0.35 + 0.6 * m) g.fillRect(xx, yy, 2, 2);
+    var noise = o.weather === 'rain' ? 380 : o.weather === 'dust' ? 900 : 25; for (var n = 0; n < noise; n++) { g.fillStyle = 'rgba(79,227,255,' + (0.3 + r() * 0.5) + ')'; g.fillRect(r() * w, r() * h * 0.9, 2, 2); }
+  } else if (o.sensor === 'radar') {
+    g.fillStyle = '#020d05'; g.fillRect(0, 0, w, h);
+    var R = h * 0.44, ox = h * 0.5, oy = h * 0.5; g.strokeStyle = 'rgba(80,255,120,.35)'; g.lineWidth = 1;
+    [0.33, 0.66, 1].forEach(function (f) { g.beginPath(); g.arc(ox, oy, R * f, 0, 7); g.stroke(); });
+    g.beginPath(); g.moveTo(ox - R, oy); g.lineTo(ox + R, oy); g.moveTo(ox, oy - R); g.lineTo(ox, oy + R); g.stroke();
+    var ang = r() * 6.28, dist = R * (0.35 + r() * 0.5), bx = ox + Math.cos(ang) * dist, by = oy + Math.sin(ang) * dist, size = (look === 'vehicle' || look === 'metal' ? 9 : look === 'unclear' ? 4 : 5) * (0.6 + q);
+    if (o.moving) for (var t = 1; t < 5; t++) { g.fillStyle = 'rgba(80,255,120,' + (0.35 - t * 0.07) + ')'; g.beginPath(); g.arc(bx - t * 6, by + t * 3, size * 0.8, 0, 7); g.fill(); }
+    g.fillStyle = 'rgba(120,255,150,' + (0.5 + 0.5 * q) + ')'; g.shadowColor = '#5f5'; g.shadowBlur = 10; g.beginPath(); g.arc(bx, by, size, 0, 7); g.fill(); g.shadowBlur = 0;
+    for (var c2 = 0; c2 < 14; c2++) { g.fillStyle = 'rgba(80,255,120,' + r() * 0.4 + ')'; var aa = r() * 6.28, dd = r() * R; g.fillRect(ox + Math.cos(aa) * dd, oy + Math.sin(aa) * dd, 2, 2); }
+    g.strokeStyle = 'rgba(120,255,150,.8)'; g.lineWidth = 2; g.beginPath(); g.moveTo(ox, oy); g.lineTo(ox + Math.cos(ang + 0.3) * R, oy + Math.sin(ang + 0.3) * R); g.stroke();
+    g.fillStyle = 'rgba(120,255,150,.9)'; g.font = (12 * kk) + 'px Arial'; g.fillText('echo at ~' + Math.round(dist / R * 120) + ' m', h + 10, oy);
+  } else {
+    g.fillStyle = '#10101a'; g.fillRect(0, 0, w, h);
+    var mid = h * 0.5, noiseA = o.weather === 'rain' ? 0.9 : o.weather === 'night' ? 0.15 : 0.3, sig = blind ? 0.05 : q;
+    g.strokeStyle = '#ffd34d'; g.lineWidth = 1.5; g.beginPath();
+    for (var x3 = 0; x3 < w * 0.68; x3++) { var burst = (look === 'vehicle' ? Math.sin(x3 * 0.9) : (Math.floor(x3 / 14) % 3 === 0 ? Math.sin(x3 * 0.5) : 0)) * sig * h * 0.32; var yv = mid + burst + (r() - 0.5) * noiseA * h * 0.4; if (x3) g.lineTo(x3, yv); else g.moveTo(x3, yv); }
+    g.stroke();
+    var px = w * 0.84, py = mid, rr = h * 0.3, br = r() * 6.28; g.strokeStyle = '#666'; g.beginPath(); g.arc(px, py, rr, 0, 7); g.stroke();
+    g.fillStyle = 'rgba(255,211,77,.45)'; g.beginPath(); g.moveTo(px, py); g.arc(px, py, rr, br - 0.45, br + 0.45); g.closePath(); g.fill();
+    g.fillStyle = '#ccc'; g.font = (11 * kk) + 'px Arial'; g.fillText('direction', px - rr * 0.6, py + rr + 14 * kk);
+  }
+  if (blind) { g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, h - 30 * kk, w, 30 * kk); g.fillStyle = '#fff'; g.font = 'bold ' + (13 * kk) + 'px Arial'; g.fillText('Blinded by ' + C.WEATHER[o.weather].label.toLowerCase(), 8, h - 10 * kk); }
+  g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, 0, w, 22 * kk); g.fillStyle = '#fff'; g.font = 'bold ' + (12 * kk) + 'px Arial';
+  var who = o.platform ? C.ASSETS[o.platform].name + (o.platform === 'drone' ? (o.alt === 'low' ? ' (low)' : ' (high)') : '') + ' · ' : '';
+  g.fillText(who + C.SENSORS[o.sensor].name + ' · ' + C.WEATHER[o.weather].label + (o.conf != null ? ' · ' + o.conf + '%' : ''), 8, 15 * kk);
+  g.restore();
+}
+var PREVIEW_T = [['person', 'Person'], ['vehicle', 'Vehicle'], ['heat', 'Hot roof vent (false)'], ['animal', 'Animal (false)'], ['debris', 'Debris pile (false)'], ['metal', 'Metal roof (false)']];
+function previewConf(sensor, look, w) { var real = look === 'person' || look === 'vehicle', b = real ? C.DET[sensor][look] : C.CLUT[look][sensor]; return Math.round(100 * Math.min(0.95, (real ? 0.3 : 0.2) + 0.6 * b * C.WEATHER[w].m[sensor])); }
+function caption(sensor, platform, alt) {
+  var mode = viewMode({ platform: platform, alt: alt });
+  return CAPTION[sensor] + (sensor === 'camera' || sensor === 'thermal' || sensor === 'lidar' ? ' Seen ' + VIEWPOINT[mode] + '.' : '');
+}
+root.SimViews = { sensorView: sensorView, CAPTION: CAPTION, caption: caption, PREVIEW_T: PREVIEW_T, previewConf: previewConf, viewMode: viewMode };
+})(typeof window !== 'undefined' ? window : globalThis);
+
 </script>
 
 <script id="ui">
@@ -611,6 +803,7 @@ function drawUnitMap() {
   for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) { var i = C.idx(x, y); if (!S.observed[i]) continue; ctx.fillStyle = S.returned[i] ? '#2b2b2b' : '#f4f4f4'; ctx.fillRect(x * PX, y * PX, PX, PX); }
 }
 function dot(x, y, r, fill, stroke) { ctx.beginPath(); ctx.arc(x * PX, y * PX, r, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill(); if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke(); } }
+function drawBase() { var b = C.BASE; ctx.fillStyle = '#fff'; ctx.strokeStyle = '#45004D'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(b[0] * PX, b[1] * PX, 13, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#45004D'; ctx.font = 'bold 14px Arial'; ctx.fillText('B', b[0] * PX - 5, b[1] * PX + 5); ctx.font = 'bold 11px Arial'; ctx.fillText('Base (recharge)', b[0] * PX - 44, b[1] * PX + 28); }
 function drawPaths() {
   KINDS.forEach(function (k) {
     var a = U.cfg[k]; ctx.strokeStyle = ACOL[k]; ctx.fillStyle = ACOL[k]; ctx.lineWidth = k === U.sel && U.phase === 'setup' ? 4 : 2.5;
@@ -625,12 +818,12 @@ function drawAssets(truth) {
   var S = U.sim; if (!S) return;
   KINDS.forEach(function (k) {
     var st = S.assets[k], x = truth ? st.x : st.x + st.off[0], y = truth ? st.y : st.y + st.off[1];
-    var gone = !st.alive || st.landed;
+    var gone = !st.alive || !!st.charging;
     ctx.save(); ctx.globalAlpha = gone ? 0.35 : 1;
     if (k === 'mast') { ctx.fillStyle = ACOL[k]; ctx.fillRect(x * PX - 9, y * PX - 9, 18, 18); }
     else if (k === 'drone') { ctx.beginPath(); ctx.moveTo(x * PX, y * PX - 11); ctx.lineTo(x * PX + 10, y * PX + 8); ctx.lineTo(x * PX - 10, y * PX + 8); ctx.closePath(); ctx.fillStyle = ACOL[k]; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
     else dot(x, y, 9, ACOL[k], '#fff');
-    ctx.fillStyle = '#000'; ctx.font = 'bold 12px Arial'; ctx.fillText(C.ASSETS[k].name + (gone ? ' (out)' : st.gpsLost && !truth ? ' (position?)' : ''), x * PX + 12, y * PX - 8);
+    ctx.fillStyle = '#000'; ctx.font = 'bold 12px Arial'; ctx.fillText(C.ASSETS[k].name + (!st.alive ? ' (out)' : st.charging ? ' (charging)' : st.goingHome ? ' (to base)' : st.gpsLost && !truth ? ' (position?)' : ''), x * PX + 12, y * PX - 8);
     ctx.restore();
   });
 }
@@ -664,88 +857,19 @@ function draw() {
   var mode = U.mapMode;
   if (mode === 'unit') drawUnitMap(); else ctx.drawImage(terrainImage(mode === 'truth' ? C.WORLD.truth : C.WORLD.brief, mode === 'truth' ? 't' : 'b'), 0, 0);
   if (U.phase === 'mission' && mode === 'briefing' && U.sim) { ctx.fillStyle = 'rgba(255,255,255,.35)'; for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) if (U.sim.observed[C.idx(x, y)]) ctx.fillRect(x * PX, y * PX, PX, PX); }
-  drawGrid();
+  drawGrid(); drawBase();
   if (U.phase === 'setup') drawPaths();
   if (U.phase === 'gap' || U.phase === 'debrief') drawCorrections();
   if (U.phase === 'mission' || U.phase === 'gap') { drawPicture(); drawAssets(false); }
   if (U.phase === 'debrief') { if (mode === 'truth') drawTruth(); drawPicture(); drawAssets(mode === 'truth'); }
 }
 
-/* ---------- sensor view: what the robot actually gets ---------- */
-var CAPTION = { camera: 'Shape and colour, if there is light. Cannot see heat.', thermal: 'Heat only. Shows that something is warm, not what it is.',
-  lidar: 'Exact shape and distance as points. No colour, no heat.', radar: 'Something is there, and whether it moves. Not what it is.',
-  acoustic: 'A sound and roughly where it came from. No position, no shape.' };
-function vrng(seed) { var a = seed >>> 0; return function () { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; }; }
-function shape(g, look, cx, cy, k, r) {
-  g.beginPath();
-  if (look === 'person') { g.arc(cx, cy - 34 * k, 7 * k, 0, 7); g.rect(cx - 8 * k, cy - 27 * k, 16 * k, 26 * k); g.rect(cx - 7 * k, cy - 2 * k, 5 * k, 20 * k); g.rect(cx + 2 * k, cy - 2 * k, 5 * k, 20 * k); }
-  else if (look === 'vehicle') { g.rect(cx - 44 * k, cy - 14 * k, 88 * k, 22 * k); g.rect(cx - 18 * k, cy - 30 * k, 36 * k, 17 * k); g.moveTo(cx - 20 * k, cy + 10 * k); g.arc(cx - 26 * k, cy + 10 * k, 8 * k, 0, 7); g.moveTo(cx + 34 * k, cy + 10 * k); g.arc(cx + 26 * k, cy + 10 * k, 8 * k, 0, 7); }
-  else if (look === 'heat') { g.arc(cx + 18 * k, cy - 22 * k, 7 * k, 0, 7); }
-  else if (look === 'animal') { g.ellipse(cx, cy, 20 * k, 9 * k, 0, 0, 7); g.moveTo(cx + 26 * k, cy - 6 * k); g.arc(cx + 22 * k, cy - 8 * k, 6 * k, 0, 7); g.rect(cx - 14 * k, cy + 6 * k, 4 * k, 12 * k); g.rect(cx + 10 * k, cy + 6 * k, 4 * k, 12 * k); }
-  else if (look === 'debris') { g.moveTo(cx - 40 * k, cy + 16 * k); g.lineTo(cx - 24 * k, cy - 6 * k); g.lineTo(cx - 6 * k, cy + 2 * k); g.lineTo(cx + 10 * k, cy - 14 * k); g.lineTo(cx + 36 * k, cy + 16 * k); g.closePath(); }
-  else if (look === 'metal') { g.rect(cx - 46 * k, cy - 20 * k, 92 * k, 10 * k); }
-  else { for (var i = 0; i < 5; i++) { var x = cx + (r() - 0.5) * 40 * k, y = cy + (r() - 0.5) * 24 * k; g.moveTo(x + 10 * k, y); g.arc(x, y, (5 + r() * 8) * k, 0, 7); } }
-  g.fill();
-}
-function sensorView(cvs, o) {
-  var g = cvs.getContext('2d'), w = cvs.width, h = cvs.height, r = vrng(o.seed || 7), m = C.WEATHER[o.weather].m[o.sensor], blind = m < 0.3;
-  var q = Math.max(0.08, Math.min(1, (o.conf || 60) / 100)), cx = w * 0.55, cy = h * 0.62, k = h / 170, look = o.look || 'unclear';
-  g.save(); g.clearRect(0, 0, w, h);
-  if (o.sensor === 'camera') {
-    var sky = g.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#9cc3e6'); sky.addColorStop(0.55, '#dfe9f1'); sky.addColorStop(0.56, '#a49a7a'); sky.addColorStop(1, '#7d7458'); g.fillStyle = sky; g.fillRect(0, 0, w, h);
-    if (look === 'heat' || look === 'metal') { g.fillStyle = '#6b5b6e'; g.fillRect(cx - 70 * k, cy - 20 * k, 140 * k, 60 * k); }
-    g.fillStyle = 'rgba(40,40,40,' + (0.25 + 0.75 * q) + ')'; if (look === 'metal') g.fillStyle = 'rgba(255,255,255,' + (0.5 + 0.5 * q) + ')'; shape(g, look, cx, cy, k, r);
-    if (o.weather === 'rain') { g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1; for (var i = 0; i < 160; i++) { var x = r() * w, y = r() * h; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 4, y + 12); g.stroke(); } g.fillStyle = 'rgba(120,130,140,.35)'; g.fillRect(0, 0, w, h); }
-    if (o.weather === 'dust') { g.fillStyle = 'rgba(170,140,95,.86)'; g.fillRect(0, 0, w, h); }
-    if (o.weather === 'night') { g.fillStyle = 'rgba(0,0,8,.9)'; g.fillRect(0, 0, w, h); for (var j = 0; j < 900; j++) { g.fillStyle = 'rgba(255,255,255,' + r() * 0.18 + ')'; g.fillRect(r() * w, r() * h, 1.5, 1.5); } }
-  } else if (o.sensor === 'thermal') {
-    g.fillStyle = o.weather === 'heat' ? '#8a5a6a' : '#140a2a'; g.fillRect(0, 0, w, h);
-    if (o.weather === 'heat') { for (var a = 0; a < 40; a++) { g.fillStyle = 'rgba(255,180,90,' + r() * 0.35 + ')'; g.beginPath(); g.arc(r() * w, r() * h, 8 + r() * 30, 0, 7); g.fill(); } }
-    var cool = look === 'debris' || look === 'metal';
-    var hot = g.createRadialGradient(cx, cy - 10 * k, 2, cx, cy - 10 * k, 60 * k); hot.addColorStop(0, cool ? '#3a3a70' : 'rgba(255,245,160,' + q + ')'); hot.addColorStop(1, cool ? '#26264f' : 'rgba(255,80,0,' + (0.4 + 0.5 * q) + ')');
-    g.fillStyle = hot; g.shadowColor = cool ? 'transparent' : '#ff9a00'; g.shadowBlur = 14 * q; shape(g, look, cx, cy, k, r); g.shadowBlur = 0;
-    if (o.weather === 'rain' || o.weather === 'dust') { g.fillStyle = 'rgba(70,50,90,.55)'; g.fillRect(0, 0, w, h); }
-  } else if (o.sensor === 'lidar') {
-    g.fillStyle = '#05080c'; g.fillRect(0, 0, w, h);
-    var off = document.createElement('canvas'); off.width = w; off.height = h; var og = off.getContext('2d'); og.fillStyle = '#fff'; shape(og, look, cx, cy, k, r); og.fillRect(0, cy + 18 * k, w, 3);
-    var data = og.getImageData(0, 0, w, h).data, step = Math.max(3, Math.round(5 / q));
-    g.fillStyle = '#4fe3ff';
-    if (!blind) for (var y = 0; y < h; y += step) for (var x = (y / step % 2) * step / 2; x < w; x += step) if (data[(y * w + (x | 0)) * 4 + 3] > 0 && r() < 0.35 + 0.6 * m) g.fillRect(x, y, 2, 2);
-    var noise = o.weather === 'rain' ? 380 : o.weather === 'dust' ? 900 : 25; for (var n = 0; n < noise; n++) { g.fillStyle = 'rgba(79,227,255,' + (0.3 + r() * 0.5) + ')'; g.fillRect(r() * w, r() * h * 0.9, 2, 2); }
-  } else if (o.sensor === 'radar') {
-    g.fillStyle = '#020d05'; g.fillRect(0, 0, w, h);
-    var R = h * 0.44, ox = h * 0.5, oy = h * 0.5; g.strokeStyle = 'rgba(80,255,120,.35)'; g.lineWidth = 1;
-    [0.33, 0.66, 1].forEach(function (f) { g.beginPath(); g.arc(ox, oy, R * f, 0, 7); g.stroke(); });
-    g.beginPath(); g.moveTo(ox - R, oy); g.lineTo(ox + R, oy); g.moveTo(ox, oy - R); g.lineTo(ox, oy + R); g.stroke();
-    var ang = r() * 6.28, dist = R * (0.35 + r() * 0.5), bx = ox + Math.cos(ang) * dist, by = oy + Math.sin(ang) * dist, size = (look === 'vehicle' || look === 'metal' ? 9 : look === 'unclear' ? 4 : 5) * (0.6 + q);
-    if (o.moving) for (var t = 1; t < 5; t++) { g.fillStyle = 'rgba(80,255,120,' + (0.35 - t * 0.07) + ')'; g.beginPath(); g.arc(bx - t * 6, by + t * 3, size * 0.8, 0, 7); g.fill(); }
-    g.fillStyle = 'rgba(120,255,150,' + (0.5 + 0.5 * q) + ')'; g.shadowColor = '#5f5'; g.shadowBlur = 10; g.beginPath(); g.arc(bx, by, size, 0, 7); g.fill(); g.shadowBlur = 0;
-    for (var c2 = 0; c2 < 14; c2++) { g.fillStyle = 'rgba(80,255,120,' + r() * 0.4 + ')'; var aa = r() * 6.28, dd = r() * R; g.fillRect(ox + Math.cos(aa) * dd, oy + Math.sin(aa) * dd, 2, 2); }
-    var sw = g.createLinearGradient(ox, oy, ox + R, oy); g.strokeStyle = 'rgba(120,255,150,.8)'; g.lineWidth = 2; g.beginPath(); g.moveTo(ox, oy); g.lineTo(ox + Math.cos(ang + 0.3) * R, oy + Math.sin(ang + 0.3) * R); g.stroke(); void sw;
-    g.fillStyle = 'rgba(120,255,150,.9)'; g.font = (12 * k) + 'px Arial'; g.fillText('echo at ~' + Math.round(dist / R * 120) + ' m', h + 10, oy);
-  } else {
-    g.fillStyle = '#10101a'; g.fillRect(0, 0, w, h);
-    var mid = h * 0.5, noiseA = o.weather === 'rain' ? 0.9 : o.weather === 'night' ? 0.15 : 0.3, sig = blind ? 0.05 : q;
-    g.strokeStyle = '#ffd34d'; g.lineWidth = 1.5; g.beginPath();
-    for (var xx = 0; xx < w * 0.68; xx++) { var burst = (look === 'vehicle' ? Math.sin(xx * 0.9) : (Math.floor(xx / 14) % 3 === 0 ? Math.sin(xx * 0.5) : 0)) * sig * h * 0.32; var yv = mid + burst + (r() - 0.5) * noiseA * h * 0.4; if (xx) g.lineTo(xx, yv); else g.moveTo(xx, yv); }
-    g.stroke();
-    var px = w * 0.84, py = mid, rr = h * 0.3, br = r() * 6.28; g.strokeStyle = '#666'; g.beginPath(); g.arc(px, py, rr, 0, 7); g.stroke();
-    g.fillStyle = 'rgba(255,211,77,.45)'; g.beginPath(); g.moveTo(px, py); g.arc(px, py, rr, br - 0.45, br + 0.45); g.closePath(); g.fill();
-    g.fillStyle = '#ccc'; g.font = (11 * k) + 'px Arial'; g.fillText('direction', px - rr * 0.6, py + rr + 14 * k);
-  }
-  if (blind) { g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, h - 30 * k, w, 30 * k); g.fillStyle = '#fff'; g.font = 'bold ' + (13 * k) + 'px Arial'; g.fillText('Blinded by ' + C.WEATHER[o.weather].label.toLowerCase(), 8, h - 10 * k); }
-  g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, 0, w, 22 * k); g.fillStyle = '#fff'; g.font = 'bold ' + (12 * k) + 'px Arial';
-  g.fillText(C.SENSORS[o.sensor].name + ' · ' + C.WEATHER[o.weather].label + (o.conf != null ? ' · ' + o.conf + '%' : ''), 8, 15 * k);
-  g.restore();
-}
-var PREVIEW_T = [['person', 'Person'], ['vehicle', 'Vehicle'], ['heat', 'Hot roof vent (false)'], ['animal', 'Animal (false)'], ['debris', 'Debris pile (false)'], ['metal', 'Metal roof (false)']];
-function previewConf(sensor, look, w) { var real = look === 'person' || look === 'vehicle', b = real ? C.DET[sensor][look] : C.CLUT[look][sensor]; return Math.round(100 * Math.min(0.95, (real ? 0.3 : 0.2) + 0.6 * b * C.WEATHER[w].m[sensor])); }
+/* ---------- sensor view (shared views.js) ---------- */
+var V = window.SimViews, CAPTION = V.CAPTION, PREVIEW_T = V.PREVIEW_T;
+function sensorView(cvs, o) { V.sensorView(cvs, o); }
 function drawPreviews() {
-  ['pv1', 'pv2'].forEach(function (id) {
-    var cv2 = $(id); if (!cv2) return; var sensor = cv2.getAttribute('data-sensor'); if (!sensor) return;
-    var look = U.pvLook || 'person', w = U.pvWx || 'clear', real = look === 'person' || look === 'vehicle';
-    sensorView(cv2, { sensor: sensor, weather: w, look: real ? look : (C.CLUT[look][sensor] >= 0.3 ? look : look), conf: previewConf(sensor, look, w), seed: 11, moving: look === 'vehicle' || look === 'animal' });
-  });
+  ['pv1', 'pv2'].forEach(function (id) { var c = $(id); if (!c) return; var s = c.getAttribute('data-sensor'), plat = c.getAttribute('data-platform');
+    sensorView(c, { sensor: s, weather: U.pvWx || 'clear', look: U.pvLook || 'person', conf: V.previewConf(s, U.pvLook || 'person', U.pvWx || 'clear'), seed: 11, moving: U.pvLook === 'vehicle' || U.pvLook === 'animal', platform: plat, alt: U.cfg.drone.alt }); });
 }
 function drawMissionView() {
   var cv2 = $('sv'); if (!cv2 || !U.sim) return; var S = U.sim, q = C.queue(S), r = null;
@@ -753,8 +877,8 @@ function drawMissionView() {
   if (!r) r = q[0];
   var key = r ? r.id + '|' + r.status : 'none'; if (key === lastView) return; lastView = key;
   if (!r) { var g = cv2.getContext('2d'); g.fillStyle = '#1a1a1a'; g.fillRect(0, 0, cv2.width, cv2.height); g.fillStyle = '#aaa'; g.font = '16px Arial'; g.fillText('No report selected', 20, cv2.height / 2); $('svCap').textContent = ''; return; }
-  sensorView(cv2, { sensor: r.sensor, weather: r.wx || S.weather, look: r.look, conf: r.conf, seed: r.id * 977, moving: r.moving });
-  $('svCap').textContent = 'Report ' + r.id + ' from the ' + C.ASSETS[r.asset].name.toLowerCase() + '. ' + CAPTION[r.sensor];
+  sensorView(cv2, { sensor: r.sensor, weather: r.wx || S.weather, look: r.look, conf: r.conf, seed: r.id * 977, moving: r.moving, platform: r.asset, alt: r.alt });
+  $('svCap').textContent = 'Report ' + r.id + ' from the ' + C.ASSETS[r.asset].name.toLowerCase() + '. ' + V.caption(r.sensor, r.asset, r.alt);
 }
 var lastView = '';
 
@@ -778,7 +902,7 @@ function vendorTable(keys) {
 }
 function assetPanel(k) {
   var a = U.cfg[k], dis = locked() ? ' disabled' : '', pay = C.payloadOf(a), z = U.cfg.command.zones[k];
-  var h = '<div class="card"><h3>' + C.ASSETS[k].name + ' <span class="pill">zone ' + C.ZONES[z].name + ' (set by commander)</span></h3>';
+  var h = '<div class="card"><h3>' + C.ASSETS[k].name + ' <span class="pill">suggested area ' + C.ZONES[z].name + '</span></h3>';
   h += '<label class="row">Preset <select data-k="' + k + '" data-f="preset">' + opt(Object.keys(C.PRESETS[k]).map(function (p) { return [p, p + ': ' + C.PRESETS[k][p].label]; }).concat(locked() ? [] : [['custom', 'Custom']]), a.preset || 'custom') + '</select></label>';
   h += '<label class="row">Primary sensor <select data-k="' + k + '" data-f="primary"' + dis + '>' + sensorOpts(a.primary) + '</select></label>';
   h += '<label class="row">Fallback sensor <select data-k="' + k + '" data-f="fallback"' + dis + '>' + sensorOpts(a.fallback, true) + '</select></label>';
@@ -791,18 +915,19 @@ function assetPanel(k) {
     h += '<label class="row">If position is lost <select data-k="' + k + '" data-f="lostRule"' + dis + '>' + opt([['carry', 'Carry on and guess'], ['stop', 'Stop where it is'], ['return', 'Go back to start']], a.lostRule || 'carry') + '</select></label>';
     var L = k === 'ground' ? Math.max(0, C.groundRoute(C.WORLD.brief, a.path || []).cells.length - 1) : C.pathLength(a.path || [], true), sp = C.ASSETS[k].speeds[a.speed], lap = L / sp;
     h += '<div>Patrol path: <b>' + (a.path || []).length + '</b> points · ' + Math.round(L * C.CELL_M) + ' m · lap ' + Math.round(lap) + ' s</div>';
-    if (k === 'drone') { var en = C.droneEndurance(a), len = spec().length; h += '<div>Endurance ' + en + ' s for a ' + len + ' s mission</div><div class="bar' + (en < len ? ' red' : '') + '"><i style="width:' + Math.min(100, en / len * 100) + '%"></i></div>' + (en < len ? '<div class="warn">The drone will land before the end. Lighter sensors or a slower speed help.</div>' : ''); }
+    var en = k === 'drone' ? C.droneEndurance(a) : C.groundEndurance(a), len = spec().length;
+    h += '<div>Battery: <b>' + en + ' s</b> of ' + (k === 'drone' ? 'flight' : 'driving') + ', then back to base and ' + C.RECHARGE + ' s to recharge.</div><div class="bar' + (en < len ? ' red' : '') + '"><i style="width:' + Math.min(100, en / len * 100) + '%"></i></div>' + (en < len ? '<div class="note">It will recharge during the ' + len + ' s mission. Heavier sensors, speed' + (k === 'drone' ? ' and flying high' : '') + ' drain it faster. Far routes cost more travel to base.</div>' : '');
     if (k === 'ground') { var gr = C.groundRoute(C.WORLD.brief, a.path || []); if (gr.blocked) h += '<div class="warn">No road connects these points on the briefing map.</div>'; h += '<div class="note">The ground robot can only drive on roads. Clicks snap to the nearest road in its zone.</div>'; }
     h += '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button data-act="undo" data-k="' + k + '">Remove last point</button><button data-act="clear" data-k="' + k + '">Clear path</button></div><div class="note">Pick a route above, or draw your own: click the map to add a point, drag a point to move it, click a point to remove it.</div>';
   } else {
     var ridge = a.pos && C.WORLD.brief[C.idx(a.pos[0], a.pos[1])] === T.RIDGE;
     h += '<label class="row"><b>Position</b> <select data-k="mast" data-f="route">' + opt(C.ROUTES.mast.concat([['custom', 'Custom (clicked on the map)']]), a.route || 'custom') + '</select></label>';
     h += '<div>Position: <b>' + (a.pos ? C.square(a.pos[0], a.pos[1]) : 'not placed') + '</b>' + (ridge ? ' · on the ridge (sees over it)' : '') + '</div>';
-    h += '<div class="note">Pick a position above, or click on the map inside its zone. It cannot stand on buildings or water.</div>';
+    h += '<div class="note">Pick a position above, or click anywhere on the map. Not on buildings or water.</div>';
   }
   h += '</div><div class="card"><h3>What your sensors actually see</h3><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"><select id="pvLook">' + opt(PREVIEW_T, U.pvLook || 'person') + '</select><select id="pvWx">' + opt(Object.keys(C.WEATHER).map(function (x) { return [x, C.WEATHER[x].label]; }), U.pvWx || 'clear') + '</select></div>' +
-    (a.primary ? '<canvas id="pv1" data-sensor="' + a.primary + '" width="400" height="170" style="width:100%;border-radius:6px"></canvas><div class="note">Primary: ' + esc(CAPTION[a.primary]) + '</div>' : '') +
-    (a.fallback ? '<canvas id="pv2" data-sensor="' + a.fallback + '" width="400" height="170" style="width:100%;border-radius:6px;margin-top:6px"></canvas><div class="note">Fallback: ' + esc(CAPTION[a.fallback]) + '</div>' : '') +
+    (a.primary ? '<canvas id="pv1" data-platform="' + k + '" data-sensor="' + a.primary + '" width="400" height="170" style="width:100%;border-radius:6px"></canvas><div class="note">Primary: ' + esc(V.caption(a.primary, k, a.alt)) + '</div>' : '') +
+    (a.fallback ? '<canvas id="pv2" data-platform="' + k + '" data-sensor="' + a.fallback + '" width="400" height="170" style="width:100%;border-radius:6px;margin-top:6px"></canvas><div class="note">Fallback: ' + esc(V.caption(a.fallback, k, a.alt)) + '</div>' : '') +
     '<div class="note">This is all the robot gets. A person has to decide what it means.</div>';
   h += '</div><div class="card"><h3>Vendor cards</h3><div class="note">One overall score hides the conditions in which a sensor fails.</div>' + vendorTable([a.primary, a.fallback]) + '</div>';
   return h;
@@ -817,11 +942,12 @@ function operatorPanel() {
     '<div class="card"><h3>Before you confirm: four checks</h3><ol class="checks"><li><b>What did it see?</b> Does the description fit a real target?</li><li><b>Does another sensor agree?</b> Two different sensors near the same place is much stronger evidence.</li><li><b>Does it make sense there?</b> A vehicle in the marsh or a hot spot on a roof is suspicious.</li><li><b>Can this sensor be trusted right now?</b> Camera at night, thermal at midday, acoustic in rain: weak.</li></ol><div class="note">Confidence is the robot\'s own guess: use it to sort, not to decide. Confirming a false contact costs 20 points, letting a report expire costs 4, rejecting costs nothing, but a real contact nobody confirms earns nothing.</div></div>';
 }
 function commandPanel() {
-  var c = U.cfg.command, dis = locked() ? ' disabled' : '', used = {}; KINDS.forEach(function (k) { used[c.zones[k]] = 1; });
+  var c = U.cfg.command, dis = locked() ? ' disabled' : '', used = C.zonesCovered(U.cfg);
   var dark = C.ZONES.filter(function (z) { return !used[z.id]; }).map(function (z) { return z.name; });
   var h = '<div class="card"><h3>Command element</h3><div class="note">Everything you want must be set now. You cannot talk to the robots during the mission.</div>';
-  KINDS.forEach(function (k) { h += '<label class="row">' + C.ASSETS[k].name + ' patrols <select data-k="zone" data-f="' + k + '"' + dis + '>' + opt(C.ZONES.map(function (z) { return [z.id, 'zone ' + z.name]; }), c.zones[k]) + '</select></label>'; });
-  h += '<div class="' + (dark.length ? 'warn' : '') + '">' + (dark.length ? 'Unwatched: ' + dark.join(', ') : 'Every zone has an asset') + '</div>';
+  h += '<div class="note">Assets can go anywhere. Their limits are battery, sensor range and flight height. The area below only sets each asset\'s suggested route.</div>';
+  KINDS.forEach(function (k) { h += '<label class="row">' + C.ASSETS[k].name + ' starts in <select data-k="zone" data-f="' + k + '"' + dis + '>' + opt(C.ZONES.map(function (z) { return [z.id, 'zone ' + z.name]; }), c.zones[k]) + '</select></label>'; });
+  h += '<div class="' + (dark.length ? 'warn' : '') + '">' + (dark.length ? 'Nobody\'s route reaches: ' + dark.join(', ') : 'Every zone is reached by at least one route') + '</div>';
   h += '<label class="row">Report only above <select data-k="command" data-f="threshold"' + dis + '>' + opt([[30, '30% confidence'], [50, '50% confidence'], [70, '70% confidence']], c.threshold) + '</select></label>';
   h += '<label class="row">Reporting interval <select data-k="command" data-f="interval"' + dis + '>' + opt([[0, 'Immediately'], [10, 'Every 10 s (bundled)'], [20, 'Every 20 s (bundled)']], c.interval) + '</select></label>';
   h += '<label class="row">Comms budget per asset <select data-k="command" data-f="budget"' + dis + '>' + opt([[4, '4 reports a minute'], [8, '8 reports a minute'], [12, '12 reports a minute']], c.budget) + '</select></label>';
@@ -955,11 +1081,10 @@ function placePoint(k, x, y, quiet) {
   var zname = C.ZONES[U.cfg.command.zones[k]].name;
   function no(t) { if (!quiet) msg(t, true); return null; }
   if (!C.inb(x, y)) return null;
-  if (!inZone(k, x, y)) return no(C.ASSETS[k].name + ' is allocated to zone ' + zname + '. Click inside that zone.');
   if (k === 'mast') { var v = C.WORLD.brief[C.idx(x, y)]; if (v === T.BUILD || v === T.WATER) return no('The mast cannot stand on a building or water.'); return [x, y]; }
   if (k === 'ground') {
-    var best = null, bd = 1e9; for (var yy = 0; yy < H; yy++) for (var xx = 0; xx < W; xx++) if (C.WORLD.brief[C.idx(xx, yy)] === T.ROAD && inZone(k, xx, yy)) { var d = Math.hypot(xx - x, yy - y); if (d < bd) { bd = d; best = [xx, yy]; } }
-    if (!best || bd > 8) return no('The ground robot can only drive on roads. Click nearer a road in zone ' + zname + '.');
+    var best = null, bd = 1e9; for (var yy = 0; yy < H; yy++) for (var xx = 0; xx < W; xx++) if (C.WORLD.brief[C.idx(xx, yy)] === T.ROAD) { var d = Math.hypot(xx - x, yy - y); if (d < bd) { bd = d; best = [xx, yy]; } }
+    if (!best || bd > 8) return no('The ground robot can only drive on roads. Click nearer a road.');
     return best;
   }
   return [x, y];
@@ -1084,7 +1209,7 @@ function showHelp() {
     '</ol><h3>Operators: four checks before you confirm</h3><ol class="checks"><li><b>What did it see?</b> Does the description fit a real target?</li><li><b>Does another sensor agree?</b> Two different sensors near the same place is much stronger evidence.</li><li><b>Does it make sense there?</b> A vehicle in the marsh or a hot spot on a roof is suspicious.</li><li><b>Can this sensor be trusted right now?</b> Camera at night, thermal at midday, acoustic in rain: weak.</li></ol><div class="note">Confidence is the robot\'s own guess: use it to sort, not to decide. Confirming a false contact costs 20 points, letting a report expire costs 4, rejecting costs nothing, but a real contact nobody confirms earns nothing.</div><ol start="3">' +
     '<li><b>Gap.</b> Operators write one report for the commander from the mission record. The commander writes one direction per asset. Everyone corrects the briefing map.</li>' +
     '<li><b>Debrief.</b> The truth is revealed, with the score and the result code for the leaderboard.</li></ol>' +
-    '<h3>Sensor view</h3><p>During setup and the mission you can see what each sensor actually returns: a camera picture, a heat image, lidar points, a radar echo or a sound trace. This is all the robot gets. People decide what it means.</p><h3>Scoring</h3><p>+30 per real contact confirmed · −20 per false or misplaced confirmation · −4 per expired report · +1 per % of the area kept under watch (seen in the last minute, averaged over the mission) · up to +30 for a fast first confirmation · −1 per report dropped by the comms budget.</p>' +
+    '<h3>Limits</h3><p>Assets can go anywhere on the map. Their limits are battery time (they fly or drive back to base to recharge), sensor range and flight height.</p><h3>Sensor view</h3><p>During setup and the mission you can see what each sensor actually returns: a camera picture, a heat image, lidar points, a radar echo or a sound trace. This is all the robot gets. People decide what it means.</p><h3>Scoring</h3><p>+30 per real contact confirmed · −20 per false or misplaced confirmation · −4 per expired report · +1 per % of the area kept under watch (seen in the last minute, averaged over the mission) · up to +30 for a fast first confirmation · −1 per report dropped by the comms budget.</p>' +
     '<p class="note">Everything runs in this one file. No internet is needed. Settings are kept in this browser until you reset them.</p>');
 }
 function showBoard() {
